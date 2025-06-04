@@ -16,16 +16,17 @@ from magic_pdf.data.dataset import PymuDocDataset
 from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
 from magic_pdf.config.enums import SupportedPdfParseMethod
 from magic_pdf.data.data_reader_writer import FileBasedDataWriter
+import pdb
 
-# 
 app = FastAPI()
 # 读取配置信息
 dotenv.load_dotenv()
-
+os.environ['MINERU_TOOLS_CONFIG_JSON'] = 'config/magic-pdf.json'
 # MinIO 配置
 MINIO_ENDPOINT = "localhost:9000"
 MINIO_ACCESS_KEY = "minioadmin"
 MINIO_SECRET_KEY = "minioadmin"
+# 默认的bucket名称
 MINIO_BUCKET_NAME = "miners"
 # 不使用HTTPS，将secure设置为False
 MINIO_SECURE = False
@@ -111,10 +112,10 @@ task_pool = TaskPool(max_workers=1, max_queue=5)
 tasks: Dict[str, Dict] = {}
 
 @app.post("/analyze-pdf/")
-async def analyze_pdf(pdf_path: str, background_tasks: BackgroundTasks):
+async def analyze_pdf(pdf_path: str, background_tasks: BackgroundTasks, bucket_name: str = MINIO_BUCKET_NAME, output_bucket: str = MINIO_OUTPUT_BUCKET):
     try:
         # 校验文件是否存在
-        minio_client.stat_object(MINIO_BUCKET_NAME,pdf_path)
+        minio_client.stat_object(bucket_name,pdf_path)
     except S3Error:
         raise HTTPException(status_code=404, detail="PDF文件未找到")
     task_id = str(uuid.uuid4()).replace("-", "")[:12]
@@ -163,14 +164,14 @@ async def get_task_status(task_id: str):
 tasks_lock = asyncio.Lock()  # 添加异步锁
 
 
-async def process_pdf_task(task_id: str):
+async def process_pdf_task(task_id: str,bucket_name: str = MINIO_BUCKET_NAME,output_bucket: str = MINIO_OUTPUT_BUCKET):
     try:
         # 使用异步锁，防止同时对任务状态进行修改
         # 但这里其实也不会有同时修改的可能，还是加上吧
         async with tasks_lock:  
             tasks[task_id]["status"] = TaskStatus.PROCESSING
 
-        pdf_object = minio_client.get_object(MINIO_BUCKET_NAME, tasks[task_id]["pdf_path"])
+        pdf_object = minio_client.get_object(bucket_name, tasks[task_id]["pdf_path"])
         pdf_bytes = pdf_object.read()
         # 读取pdf文件为pymudoc对象
         ds = PymuDocDataset(pdf_bytes)
@@ -192,13 +193,12 @@ async def process_pdf_task(task_id: str):
                 infer_result = ds.apply(doc_analyze, ocr=False)
                 # 使用文本模式处理分析结果，并指定输出目录
                 pipe_result = infer_result.pipe_txt_mode(FileBasedDataWriter(output_dir))
-
             markdown_content = pipe_result.get_markdown(img_dir_or_bucket_prefix=output_dir)
             content_list = json.dumps(pipe_result.get_content_list(image_dir_or_bucket_prefix=output_dir))
             middle_json = pipe_result.get_middle_json()
 
             minio_client.put_object(
-                MINIO_OUTPUT_BUCKET,
+                output_bucket,
                 f"{name_without_ext}.md",
                 io.BytesIO(markdown_content.encode('utf-8')),
                 length=len(markdown_content.encode('utf-8')),
@@ -206,7 +206,7 @@ async def process_pdf_task(task_id: str):
             )
 
             minio_client.put_object(
-                MINIO_OUTPUT_BUCKET,
+                output_bucket,
                 f"{name_without_ext}_content_list.json",
                 io.BytesIO(content_list.encode('utf-8')),
                 length=len(content_list.encode('utf-8')),
@@ -214,7 +214,7 @@ async def process_pdf_task(task_id: str):
             )
 
             minio_client.put_object(
-                MINIO_OUTPUT_BUCKET,
+                output_bucket,
                 f"{name_without_ext}_middle.json",
                 io.BytesIO(middle_json.encode('utf-8')),
                 length=len(middle_json.encode('utf-8')),
