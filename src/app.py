@@ -30,9 +30,8 @@ MINIO_SECRET_KEY = "minioadmin"
 MINIO_BUCKET_NAME = "miners"
 # 不使用HTTPS，将secure设置为False
 MINIO_SECURE = False
-# 输出文件的存储桶名称
+# 默认输出文件的存储桶名称
 MINIO_OUTPUT_BUCKET = "output"
-
 
 # 初始化 MinIO 客户端
 minio_client = Minio(
@@ -138,7 +137,7 @@ async def analyze_pdf(pdf_path: str, background_tasks: BackgroundTasks, bucket_n
         # 如果放入任务池的结果是"processing"，则立即开始处理任务
         # 如果放入任务池的结果是"queued"，则将任务加入队列，等待处理
         if placement == "processing":
-            background_tasks.add_task(process_pdf_task, task_id)
+            background_tasks.add_task(process_pdf_task, task_id = task_id, bucket_name = bucket_name, output_bucket = output_bucket)
 
         return JSONResponse(content={
             "task_id": task_id,
@@ -163,7 +162,6 @@ async def get_task_status(task_id: str):
 
 tasks_lock = asyncio.Lock()  # 添加异步锁
 
-
 async def process_pdf_task(task_id: str,bucket_name: str = MINIO_BUCKET_NAME,output_bucket: str = MINIO_OUTPUT_BUCKET):
     try:
         # 使用异步锁，防止同时对任务状态进行修改
@@ -175,8 +173,10 @@ async def process_pdf_task(task_id: str,bucket_name: str = MINIO_BUCKET_NAME,out
         pdf_bytes = pdf_object.read()
         # 读取pdf文件为pymudoc对象
         ds = PymuDocDataset(pdf_bytes)
+        # 获取pdf文件的名称，不包含后缀
         name_without_ext = os.path.splitext(os.path.basename(tasks[task_id]["pdf_path"]))[0]
-
+        # 存储文档中所有的图片
+        images_list = []
         # 使用临时文件进行相关的操作
         with tempfile.TemporaryDirectory() as temp_dir:
             output_dir = os.path.join(temp_dir, "output")
@@ -193,7 +193,27 @@ async def process_pdf_task(task_id: str,bucket_name: str = MINIO_BUCKET_NAME,out
                 infer_result = ds.apply(doc_analyze, ocr=False)
                 # 使用文本模式处理分析结果，并指定输出目录
                 pipe_result = infer_result.pipe_txt_mode(FileBasedDataWriter(output_dir))
-            markdown_content = pipe_result.get_markdown(img_dir_or_bucket_prefix=output_dir)
+            
+            # 提取并上传图片
+            for root, _, files in os.walk(output_dir):
+                for file in files:
+                    if file.lower().endswith(('.png', '.jpg', '.jpeg')):
+                        with open(os.path.join(root, file), 'rb') as img_file:
+                            # 先放入oss
+                            minio_client.put_object(
+                                output_bucket,
+                                f"images/{name_without_ext}/{file}",
+                                img_file,
+                                os.path.getsize(os.path.join(root, file)),
+                                content_type=f"image/{file.split('.')[-1]}"
+                            )
+                            # 然后再把图片名称放入图片列表
+                            images_list.append(f"/images/{name_without_ext}/{file}")
+            
+            # 生成Markdown时指定OSS前缀
+            markdown_content = pipe_result.get_markdown(
+                img_dir_or_bucket_prefix=f"{output_bucket}/images/{name_without_ext}"
+            )
             content_list = json.dumps(pipe_result.get_content_list(image_dir_or_bucket_prefix=output_dir))
             middle_json = pipe_result.get_middle_json()
 
@@ -226,7 +246,8 @@ async def process_pdf_task(task_id: str,bucket_name: str = MINIO_BUCKET_NAME,out
             tasks[task_id]["result"] = {
                 "markdown": f"{name_without_ext}.md",
                 "content_list": f"{name_without_ext}_content_list.json",
-                "middle_json": f"{name_without_ext}_middle.json"
+                "middle_json": f"{name_without_ext}_middle.json",
+                "images": images_list
             }
     except S3Error as e:
         tasks[task_id]["status"] = TaskStatus.FAILED
