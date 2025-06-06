@@ -199,27 +199,27 @@ async def process_pdf_task(task_id: str,bucket_name: str = MINIO_BUCKET_NAME,out
                 for file in files:
                     if file.lower().endswith(('.png', '.jpg', '.jpeg')):
                         with open(os.path.join(root, file), 'rb') as img_file:
-                            # 先放入oss
+                            # 把图片先放入oss
                             minio_client.put_object(
                                 output_bucket,
-                                f"images/{name_without_ext}/{file}",
+                                f"{task_id}/images/{file}",
                                 img_file,
                                 os.path.getsize(os.path.join(root, file)),
                                 content_type=f"image/{file.split('.')[-1]}"
                             )
                             # 然后再把图片名称放入图片列表
-                            images_list.append(f"/images/{name_without_ext}/{file}")
+                            images_list.append(f"{task_id}/images/{file}")
             
             # 生成Markdown时指定OSS前缀
             markdown_content = pipe_result.get_markdown(
-                img_dir_or_bucket_prefix=f"{output_bucket}/images/{name_without_ext}"
+                img_dir_or_bucket_prefix=f"{task_id}/images/"
             )
             content_list = json.dumps(pipe_result.get_content_list(image_dir_or_bucket_prefix=output_dir))
             middle_json = pipe_result.get_middle_json()
 
             minio_client.put_object(
                 output_bucket,
-                f"{name_without_ext}.md",
+                f"{task_id}/{name_without_ext}.md",
                 io.BytesIO(markdown_content.encode('utf-8')),
                 length=len(markdown_content.encode('utf-8')),
                 content_type="text/markdown"
@@ -227,7 +227,7 @@ async def process_pdf_task(task_id: str,bucket_name: str = MINIO_BUCKET_NAME,out
 
             minio_client.put_object(
                 output_bucket,
-                f"{name_without_ext}_content_list.json",
+                f"{task_id}/{name_without_ext}_content_list.json",
                 io.BytesIO(content_list.encode('utf-8')),
                 length=len(content_list.encode('utf-8')),
                 content_type="application/json"
@@ -235,7 +235,7 @@ async def process_pdf_task(task_id: str,bucket_name: str = MINIO_BUCKET_NAME,out
 
             minio_client.put_object(
                 output_bucket,
-                f"{name_without_ext}_middle.json",
+                f"{task_id}/{name_without_ext}_middle.json",
                 io.BytesIO(middle_json.encode('utf-8')),
                 length=len(middle_json.encode('utf-8')),
                 content_type="application/json"
@@ -244,9 +244,9 @@ async def process_pdf_task(task_id: str,bucket_name: str = MINIO_BUCKET_NAME,out
         async with tasks_lock:
             tasks[task_id]["status"] = TaskStatus.COMPLETED
             tasks[task_id]["result"] = {
-                "markdown": f"{name_without_ext}.md",
-                "content_list": f"{name_without_ext}_content_list.json",
-                "middle_json": f"{name_without_ext}_middle.json",
+                "markdown": f"{task_id}/{name_without_ext}.md",
+                "content_list": f"{task_id}/{name_without_ext}_content_list.json",
+                "middle_json": f"{task_id}/{name_without_ext}_middle.json",
                 "images": images_list
             }
     except S3Error as e:
