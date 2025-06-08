@@ -3,8 +3,10 @@ from fastapi.responses import JSONResponse
 from enum import Enum
 import uuid
 from typing import Dict, OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 import asyncio
 import uvicorn
+from threading import Lock
 import os
 import json
 import io
@@ -40,7 +42,8 @@ minio_client = Minio(
     secret_key=MINIO_SECRET_KEY,
     secure=MINIO_SECURE
 )
-
+thread_pool = ThreadPoolExecutor(max_workers=1)
+tasks_lock = Lock()  # 添加异步锁
 # 定义任务状态枚举
 # 继承 str 类型，这样可以确保枚举值是字符串类型，而不是默认的 int 类型
 # 这样可以确保在 JSON 序列化时，枚举值会被正确地转换为字符串
@@ -61,15 +64,15 @@ class TaskPool:
         self.max_queue = max_queue
         self.active_tasks: Dict[str, Dict] = {}
         self.queued_tasks = OrderedDict()
-        self.lock = asyncio.Lock()
+        self.lock = Lock()
 
 
-    async def add_task(self, task_id: str, task_data: Dict):
+    def add_task(self, task_id: str, task_data: Dict):
         """
         添加任务到任务池中，如果任务队列已满，则返回错误信息。
         如果有空闲的工作线程，则立即开始处理任务，否则将任务加入队列。
         """
-        async with self.lock:
+        with self.lock:
             if len(self.queued_tasks) >= self.max_queue:
                 raise Exception("任务队列已满，请稍后再试")
             if len(self.active_tasks) < self.max_workers:
@@ -79,12 +82,12 @@ class TaskPool:
                 self.queued_tasks[task_id] = task_data
                 return "queued"
 
-    async def task_completed(self, task_id: str):
+    def task_completed(self, task_id: str):
         """
         完成任务后，从活动任务列表中移除，并尝试从队列中获取下一个任务。
         如果队列中有任务，则返回下一个任务的ID，否则返回None。
         """
-        async with self.lock:
+        with self.lock:
             if task_id in self.active_tasks:
                 del self.active_tasks[task_id]
             if self.queued_tasks:
@@ -93,17 +96,16 @@ class TaskPool:
                 return next_task_id
             return None
 
-    async def get_task_status(self, task_id: str):
+    def get_task_status(self, task_id: str):
         """
         通过taskid获取任务状态。
         如果任务在活动任务列表或队列中，则返回任务状态，否则返回None。
         """
-        async with self.lock:
-            if task_id in self.active_tasks:
-                return self.active_tasks[task_id]["status"]
-            elif task_id in self.queued_tasks:
-                return self.queued_tasks[task_id]["status"]
-            return None
+        if task_id in self.active_tasks:
+            return self.active_tasks[task_id]["status"]
+        elif task_id in self.queued_tasks:
+            return self.queued_tasks[task_id]["status"]
+        return None
 
 # 初始化任务池和任务字典
 # 默认同时只有一个任务在执行
@@ -127,16 +129,20 @@ async def analyze_pdf(pdf_path: str, background_tasks: BackgroundTasks, bucket_n
         "result": None,
         "error": None,
         "pdf_path": pdf_path,
+        "bucket_name": bucket_name,
+        "output_bucket": output_bucket
     }
     # 将任务数据添加到任务字典中，开始处理流程
     tasks[task_id] = task_data
 
     try:
         # 将任务添加到任务池中
-        placement = await task_pool.add_task(task_id, task_data)
+        placement = task_pool.add_task(task_id, task_data)
         # 如果放入任务池的结果是"processing"，则立即开始处理任务
         # 如果放入任务池的结果是"queued"，则将任务加入队列，等待处理
         if placement == "processing":
+            with tasks_lock:
+                tasks[task_id]["status"] = TaskStatus.PROCESSING
             background_tasks.add_task(process_pdf_task, task_id = task_id, bucket_name = bucket_name, output_bucket = output_bucket)
 
         return JSONResponse(content={
@@ -160,13 +166,11 @@ async def get_task_status(task_id: str):
         "error": task["error"]
     })
 
-tasks_lock = asyncio.Lock()  # 添加异步锁
-
-async def process_pdf_task(task_id: str,bucket_name: str = MINIO_BUCKET_NAME,output_bucket: str = MINIO_OUTPUT_BUCKET):
+def _sync_process_pdf(task_id: str,bucket_name: str = MINIO_BUCKET_NAME,output_bucket: str = MINIO_OUTPUT_BUCKET):
     try:
         # 使用异步锁，防止同时对任务状态进行修改
         # 但这里其实也不会有同时修改的可能，还是加上吧
-        async with tasks_lock:  
+        with tasks_lock:  
             tasks[task_id]["status"] = TaskStatus.PROCESSING
 
         pdf_object = minio_client.get_object(bucket_name, tasks[task_id]["pdf_path"])
@@ -241,7 +245,7 @@ async def process_pdf_task(task_id: str,bucket_name: str = MINIO_BUCKET_NAME,out
                 content_type="application/json"
             )
 
-        async with tasks_lock:
+        with tasks_lock:
             tasks[task_id]["status"] = TaskStatus.COMPLETED
             tasks[task_id]["result"] = {
                 "markdown": f"{task_id}/{name_without_ext}.md",
@@ -255,12 +259,41 @@ async def process_pdf_task(task_id: str,bucket_name: str = MINIO_BUCKET_NAME,out
     except Exception as e:
         tasks[task_id]["status"] = TaskStatus.FAILED
         tasks[task_id]["error"] = str(e)
+
+        
+async def process_pdf_task(task_id: str, bucket_name: str, output_bucket: str):
+    loop = asyncio.get_running_loop()
+    try:
+        # 将同步阻塞函数放到线程池中执行
+        result = await loop.run_in_executor(
+            thread_pool,
+            _sync_process_pdf,  # 你的同步处理函数
+            task_id, tasks[task_id]["bucket_name"], tasks[task_id]["output_bucket"]
+        )
+        return result
+    except Exception as e:
+        # 错误处理已经在_sync_process_pdf内部完成，这里只是为了捕获未处理的异常
+        print(f"Error in process_pdf_task for {task_id}: {e}")
+        # 如果_sync_process_pdf已经处理了错误并更新了tasks，这里可以不做额外处理
+        # 否则，可以在这里更新tasks[task_id]["status"] = TaskStatus.FAILED
     finally:
-        next_task_id = await task_pool.task_completed(task_id)
+        # 任务完成后，从任务池中移除任务，并获取下一个任务ID
+        next_task_id = task_pool.task_completed(task_id)
+
+        # 检查是否有下一个任务需要启动
         if next_task_id:
-            next_pdf_path = tasks[next_task_id].get("pdf_path")
-            if next_pdf_path:
-                await process_pdf_task(next_task_id)
+            with tasks_lock: # 保护全局tasks字典
+                tasks[next_task_id]["status"] = TaskStatus.PROCESSING
+            # 关键：在这里使用 asyncio.create_task 或 BackgroundTasks 调度下一个任务
+            # 因为 process_pdf_task 运行在主事件循环中，可以安全地调度异步任务
+            # 注意：这里直接使用 asyncio.create_task 更符合内部调度，
+            # 如果想让FastAPI管理，也可以考虑重新调用 analyze_pdf 接口
+            # 但内部调度更合适，避免了HTTP请求的开销
+
+            # 方式A: 使用 asyncio.create_task (推荐用于内部调度)
+            asyncio.create_task(process_pdf_task(next_task_id,tasks[task_id]["bucket_name"], tasks[task_id]["output_bucket"]))
+            print(f"Task {next_task_id} started from queue.")
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
