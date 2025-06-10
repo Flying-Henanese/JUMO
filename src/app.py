@@ -53,7 +53,6 @@ class TaskStatus(str, Enum):
     COMPLETED = "处理完成"
     FAILED = "处理失败"
 
-# 任务池类，用于管理任务的状态和队列
 class TaskPool:
 
     def __init__(self, max_workers: int = 1, max_queue: int = 5):
@@ -65,7 +64,6 @@ class TaskPool:
         self.active_tasks: Dict[str, Dict] = {}
         self.queued_tasks = OrderedDict()
         self.lock = Lock()
-
 
     def add_task(self, task_id: str, task_data: Dict):
         """
@@ -113,7 +111,15 @@ task_pool = TaskPool(max_workers=1, max_queue=5)
 tasks: Dict[str, Dict] = {}
 
 @app.post("/analyze-pdf/")
-async def analyze_pdf(pdf_path: str, background_tasks: BackgroundTasks, bucket_name: str = MINIO_BUCKET_NAME, output_bucket: str = MINIO_OUTPUT_BUCKET):
+async def analyze_pdf(
+    pdf_path: str, 
+    background_tasks: BackgroundTasks, 
+    bucket_name: str = MINIO_BUCKET_NAME, 
+    output_bucket: str = MINIO_OUTPUT_BUCKET,
+    ocr_enabled: bool = False,
+    table_enabled: bool = False,
+    ocr_lang: str = "chi_sim",
+    ):
     try:
         # 校验文件是否存在
         minio_client.stat_object(bucket_name,pdf_path)
@@ -143,7 +149,15 @@ async def analyze_pdf(pdf_path: str, background_tasks: BackgroundTasks, bucket_n
         if placement == "processing":
             with tasks_lock:
                 tasks[task_id]["status"] = TaskStatus.PROCESSING
-            background_tasks.add_task(process_pdf_task, task_id = task_id, bucket_name = bucket_name, output_bucket = output_bucket)
+            background_tasks.add_task(
+                process_pdf_task, 
+                task_id = task_id, 
+                bucket_name = bucket_name, 
+                output_bucket = output_bucket,
+                ocr_enabled = ocr_enabled,
+                table_enabled = table_enabled,
+                ocr_lang = ocr_lang
+                )
 
         return JSONResponse(content={
             "task_id": task_id,
@@ -166,7 +180,13 @@ async def get_task_status(task_id: str):
         "error": task["error"]
     })
 
-def _sync_process_pdf(task_id: str,bucket_name: str = MINIO_BUCKET_NAME,output_bucket: str = MINIO_OUTPUT_BUCKET):
+def _sync_process_pdf(
+    task_id: str,
+    bucket_name: str = MINIO_BUCKET_NAME,
+    output_bucket: str = MINIO_OUTPUT_BUCKET,
+    ocr_enabled: bool = False,
+    table_enabled: bool = False,
+    ocr_lang: str = "chi_sim"):
     try:
         # 使用异步锁，防止同时对任务状态进行修改
         # 但这里其实也不会有同时修改的可能，还是加上吧
@@ -189,7 +209,11 @@ def _sync_process_pdf(task_id: str,bucket_name: str = MINIO_BUCKET_NAME,output_b
             # 判断PDF文档类型是否需要使用OCR进行处理
             if ds.classify() == SupportedPdfParseMethod.OCR:
                 # 如果是OCR类型，使用OCR模式进行分析
-                infer_result = ds.apply(doc_analyze, ocr=True)
+                infer_result = ds.apply(
+                    doc_analyze, 
+                    ocr=True,
+                    table_enable = table_enabled,
+                    lang = ocr_lang )
                 # 为OCR模式也指定输出目录
                 pipe_result = infer_result.pipe_ocr_mode(FileBasedDataWriter(output_dir))
             else:
