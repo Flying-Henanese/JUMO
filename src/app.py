@@ -15,10 +15,10 @@ import dotenv
 from minio import Minio
 from minio.error import S3Error
 from magic_pdf.data.dataset import PymuDocDataset
+from magic_pdf.data.read_api import read_local_images, read_local_office
 from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
 from magic_pdf.config.enums import SupportedPdfParseMethod
 from magic_pdf.data.data_reader_writer import FileBasedDataWriter
-import pdb
 
 app = FastAPI()
 # 读取配置信息
@@ -34,6 +34,11 @@ MINIO_BUCKET_NAME = "miners"
 MINIO_SECURE = False
 # 默认输出文件的存储桶名称
 MINIO_OUTPUT_BUCKET = "output"
+
+# 预定义的文件类型
+PDF_EXTENSIONS = [".pdf"]
+OFFICE_EXTENSIONS = [".ppt", ".pptx", ".doc", ".docx"]
+IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg"]
 
 # 初始化 MinIO 客户端
 minio_client = Minio(
@@ -192,11 +197,28 @@ def _sync_process_pdf(
         # 但这里其实也不会有同时修改的可能，还是加上吧
         with tasks_lock:  
             tasks[task_id]["status"] = TaskStatus.PROCESSING
-
-        pdf_object = minio_client.get_object(bucket_name, tasks[task_id]["pdf_path"])
-        pdf_bytes = pdf_object.read()
-        # 读取pdf文件为pymudoc对象
-        ds = PymuDocDataset(pdf_bytes)
+        extention = os.path.splitext(tasks[task_id]["pdf_path"])[-1]
+        print(f"开始处理{extention}文件")
+        file_object = minio_client.get_object(bucket_name, tasks[task_id]["pdf_path"])
+        file_bytes = file_object.read()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = os.path.join(temp_dir, "output")
+            os.makedirs(output_dir, exist_ok=True)
+            # 把文件保存在临时文件夹中
+            with open(os.path.join(temp_dir, os.path.basename(tasks[task_id]["pdf_path"])), "wb") as f:
+                f.write(file_bytes)
+                # 读取pdf文件为pymudoc对象
+                if extention in PDF_EXTENSIONS:
+                    # 读取pdf文件为pymudoc对象
+                    ds = PymuDocDataset(file_bytes)
+                elif extention in OFFICE_EXTENSIONS:
+                    # 需要使用office解析器进行解析
+                    ds = read_local_office(temp_dir)[0]
+                elif extention in IMAGE_EXTENSIONS:
+                    # 读取图片文件为pymudoc对象
+                    ds = read_local_images(temp_dir)[0]
+                else:
+                    raise HTTPException(status_code=400, detail="不支持的文件类型")
         # 获取pdf文件的名称，不包含后缀
         name_without_ext = os.path.splitext(os.path.basename(tasks[task_id]["pdf_path"]))[0]
         # 存储文档中所有的图片
@@ -285,7 +307,13 @@ def _sync_process_pdf(
         tasks[task_id]["error"] = str(e)
 
         
-async def process_pdf_task(task_id: str, bucket_name: str, output_bucket: str):
+async def process_pdf_task(
+    task_id: str,
+    bucket_name: str,
+    output_bucket: str,
+    ocr_enabled: bool = False,
+    table_enabled: bool = False,
+    ocr_lang: str = "chi_sim"):
     loop = asyncio.get_running_loop()
     try:
         # 将同步阻塞函数放到线程池中执行
