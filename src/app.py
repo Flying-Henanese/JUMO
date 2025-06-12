@@ -1,6 +1,9 @@
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
 from enum import Enum
+
+from utils.minio_tool import MinioConnection
 import uuid
 from typing import Dict, OrderedDict
 from concurrent.futures import ThreadPoolExecutor
@@ -11,7 +14,7 @@ import os
 import json
 import io
 import tempfile
-import dotenv
+from dotenv import load_dotenv
 from minio import Minio
 from minio.error import S3Error
 from magic_pdf.data.dataset import PymuDocDataset
@@ -19,36 +22,22 @@ from magic_pdf.data.read_api import read_local_images, read_local_office
 from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
 from magic_pdf.config.enums import SupportedPdfParseMethod
 from magic_pdf.data.data_reader_writer import FileBasedDataWriter
+from pathlib import Path
 
 app = FastAPI()
-# 读取配置信息
-dotenv.load_dotenv()
-os.environ['MINERU_TOOLS_CONFIG_JSON'] = 'config/magic-pdf.json'
-# MinIO 配置
-MINIO_ENDPOINT = "localhost:9000"
-MINIO_ACCESS_KEY = "minioadmin"
-MINIO_SECRET_KEY = "minioadmin"
-# 默认的bucket名称
-MINIO_BUCKET_NAME = "miners"
-# 不使用HTTPS，将secure设置为False
-MINIO_SECURE = False
-# 默认输出文件的存储桶名称
-MINIO_OUTPUT_BUCKET = "output"
 
+# 读取配置信息
+load_dotenv()
+os.environ['MINERU_TOOLS_CONFIG_JSON'] = 'config/magic-pdf.json'
 # 预定义的文件类型
 PDF_EXTENSIONS = [".pdf"]
 OFFICE_EXTENSIONS = [".ppt", ".pptx", ".doc", ".docx"]
 IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg"]
 
-# 初始化 MinIO 客户端
-minio_client = Minio(
-    MINIO_ENDPOINT,
-    access_key=MINIO_ACCESS_KEY,
-    secret_key=MINIO_SECRET_KEY,
-    secure=MINIO_SECURE
-)
+minio_tool = MinioConnection()
 thread_pool = ThreadPoolExecutor(max_workers=1)
 tasks_lock = Lock()  # 添加异步锁
+
 # 定义任务状态枚举
 # 继承 str 类型，这样可以确保枚举值是字符串类型，而不是默认的 int 类型
 # 这样可以确保在 JSON 序列化时，枚举值会被正确地转换为字符串
@@ -119,15 +108,15 @@ tasks: Dict[str, Dict] = {}
 async def analyze_pdf(
     pdf_path: str, 
     background_tasks: BackgroundTasks, 
-    bucket_name: str = MINIO_BUCKET_NAME, 
-    output_bucket: str = MINIO_OUTPUT_BUCKET,
+    bucket_name: str, 
+    output_bucket: str,
     ocr_enabled: bool = False,
     table_enabled: bool = False,
     ocr_lang: str = "chi_sim",
     ):
     try:
         # 校验文件是否存在
-        minio_client.stat_object(bucket_name,pdf_path)
+        minio_tool.file_exists(bucket_name = bucket_name,object_name=pdf_path)
     except S3Error:
         raise HTTPException(status_code=404, detail="PDF文件未找到")
     task_id = str(uuid.uuid4()).replace("-", "")[:12]
@@ -187,8 +176,8 @@ async def get_task_status(task_id: str):
 
 def _sync_process_pdf(
     task_id: str,
-    bucket_name: str = MINIO_BUCKET_NAME,
-    output_bucket: str = MINIO_OUTPUT_BUCKET,
+    bucket_name: str,
+    output_bucket: str,
     ocr_enabled: bool = False,
     table_enabled: bool = False,
     ocr_lang: str = "chi_sim"):
@@ -198,9 +187,7 @@ def _sync_process_pdf(
         with tasks_lock:  
             tasks[task_id]["status"] = TaskStatus.PROCESSING
         extention = os.path.splitext(tasks[task_id]["pdf_path"])[-1]
-        print(f"开始处理{extention}文件")
-        file_object = minio_client.get_object(bucket_name, tasks[task_id]["pdf_path"])
-        file_bytes = file_object.read()
+        file_bytes = minio_tool.get_file_byte(bucket_name = bucket_name,object_name = tasks[task_id]["pdf_path"])
         with tempfile.TemporaryDirectory() as temp_dir:
             output_dir = os.path.join(temp_dir, "output")
             os.makedirs(output_dir, exist_ok=True)
@@ -209,13 +196,13 @@ def _sync_process_pdf(
                 f.write(file_bytes)
                 # 读取pdf文件为pymudoc对象
                 if extention in PDF_EXTENSIONS:
-                    # 读取pdf文件为pymudoc对象
+                    # 读取pdf文件为pymupdf数据集
                     ds = PymuDocDataset(file_bytes)
                 elif extention in OFFICE_EXTENSIONS:
-                    # 需要使用office解析器进行解析
+                    # 需要使用office解析器把文档解析为pymudoc数据列表
                     ds = read_local_office(temp_dir)[0]
                 elif extention in IMAGE_EXTENSIONS:
-                    # 读取图片文件为pymudoc对象
+                    # 读取图片文件为一个数据集
                     ds = read_local_images(temp_dir)[0]
                 else:
                     raise HTTPException(status_code=400, detail="不支持的文件类型")
@@ -233,7 +220,7 @@ def _sync_process_pdf(
                 # 如果是OCR类型，使用OCR模式进行分析
                 infer_result = ds.apply(
                     doc_analyze, 
-                    ocr=True,
+                    ocr=ocr_enabled, # 如果支持OCR,就按照用户传参指定是否使用
                     table_enable = table_enabled,
                     lang = ocr_lang )
                 # 为OCR模式也指定输出目录
@@ -245,49 +232,51 @@ def _sync_process_pdf(
                 pipe_result = infer_result.pipe_txt_mode(FileBasedDataWriter(output_dir))
             
             # 提取并上传图片
+            # 同时将图片
             for root, _, files in os.walk(output_dir):
                 for file in files:
                     if file.lower().endswith(('.png', '.jpg', '.jpeg')):
                         with open(os.path.join(root, file), 'rb') as img_file:
                             # 把图片先放入oss
-                            minio_client.put_object(
-                                output_bucket,
-                                f"{task_id}/images/{file}",
-                                img_file,
-                                os.path.getsize(os.path.join(root, file)),
+                            minio_tool.upload_file_by_bytes(
+                                bucket_name = output_bucket,
+                                object_name=f"{task_id}/images/{file}",
+                                file_bytes=img_file.read(),
                                 content_type=f"image/{file.split('.')[-1]}"
                             )
                             # 然后再把图片名称放入图片列表
                             images_list.append(f"{task_id}/images/{file}")
             
-            # 生成Markdown时指定OSS前缀
+            # 生成核心的3个文件
+            # 1. markdown文件
             markdown_content = pipe_result.get_markdown(
                 img_dir_or_bucket_prefix=f"{task_id}/images/"
             )
+            # 2. content_list文件
             content_list = json.dumps(pipe_result.get_content_list(image_dir_or_bucket_prefix=output_dir))
+            # 3. middle_json文件
             middle_json = pipe_result.get_middle_json()
 
-            minio_client.put_object(
-                output_bucket,
-                f"{task_id}/{name_without_ext}.md",
-                io.BytesIO(markdown_content.encode('utf-8')),
-                length=len(markdown_content.encode('utf-8')),
+
+            # 把生成的3个文件全部放入OSS
+            minio_tool.upload_file_by_bytes(
+                bucket_name = output_bucket,
+                object_name=f"{task_id}/{name_without_ext}.md",
+                file_bytes=markdown_content.encode('utf-8'),
                 content_type="text/markdown"
             )
 
-            minio_client.put_object(
-                output_bucket,
-                f"{task_id}/{name_without_ext}_content_list.json",
-                io.BytesIO(content_list.encode('utf-8')),
-                length=len(content_list.encode('utf-8')),
+            minio_tool.upload_file_by_bytes(
+                bucket_name = output_bucket,
+                object_name=f"{task_id}/{name_without_ext}_content_list.json",
+                file_bytes=content_list.encode('utf-8'),
                 content_type="application/json"
             )
 
-            minio_client.put_object(
-                output_bucket,
-                f"{task_id}/{name_without_ext}_middle.json",
-                io.BytesIO(middle_json.encode('utf-8')),
-                length=len(middle_json.encode('utf-8')),
+            minio_tool.upload_file_by_bytes(
+                bucket_name = output_bucket,
+                object_name=f"{task_id}/{name_without_ext}_middle.json",
+                file_bytes=middle_json.encode('utf-8'),
                 content_type="application/json"
             )
 
@@ -320,7 +309,12 @@ async def process_pdf_task(
         result = await loop.run_in_executor(
             thread_pool,
             _sync_process_pdf,  # 你的同步处理函数
-            task_id, tasks[task_id]["bucket_name"], tasks[task_id]["output_bucket"]
+            task_id, 
+            tasks[task_id]["bucket_name"], 
+            tasks[task_id]["output_bucket"],
+            ocr_enabled,
+            table_enabled,
+            ocr_lang
         )
         return result
     except Exception as e:
