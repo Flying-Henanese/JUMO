@@ -12,17 +12,16 @@ import uvicorn
 from threading import Lock
 import os
 import json
-import io
 import tempfile
 from dotenv import load_dotenv
-from minio import Minio
 from minio.error import S3Error
 from magic_pdf.data.dataset import PymuDocDataset
 from magic_pdf.data.read_api import read_local_images, read_local_office
+from wrapper.gpu_patch import patch_gpu_selection
+patch_gpu_selection() #打个补丁，确保每次调用may_batch_image_analyze时都会选择最佳的GPU
 from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
 from magic_pdf.config.enums import SupportedPdfParseMethod
 from magic_pdf.data.data_reader_writer import FileBasedDataWriter
-from pathlib import Path
 
 app = FastAPI()
 
@@ -34,8 +33,11 @@ PDF_EXTENSIONS = [".pdf"]
 OFFICE_EXTENSIONS = [".ppt", ".pptx", ".doc", ".docx"]
 IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg"]
 
+# 加载minio连接模块
 minio_tool = MinioConnection()
+# 创建线程池
 thread_pool = ThreadPoolExecutor(max_workers=1)
+# 异步锁
 tasks_lock = Lock()  # 添加异步锁
 
 # 定义任务状态枚举
@@ -308,7 +310,7 @@ async def process_pdf_task(
         # 将同步阻塞函数放到线程池中执行
         result = await loop.run_in_executor(
             thread_pool,
-            _sync_process_pdf,  # 你的同步处理函数
+            _sync_process_pdf,  # 同步处理函数
             task_id, 
             tasks[task_id]["bucket_name"], 
             tasks[task_id]["output_bucket"],
@@ -337,7 +339,13 @@ async def process_pdf_task(
             # 但内部调度更合适，避免了HTTP请求的开销
 
             # 方式A: 使用 asyncio.create_task (推荐用于内部调度)
-            asyncio.create_task(process_pdf_task(next_task_id,tasks[task_id]["bucket_name"], tasks[task_id]["output_bucket"]))
+            asyncio.create_task(
+                process_pdf_task(
+                    next_task_id,
+                    tasks[task_id]["bucket_name"], 
+                    tasks[task_id]["output_bucket"]
+                    )
+                )
             print(f"Task {next_task_id} started from queue.")
 
 
