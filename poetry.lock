@@ -5203,6 +5203,26 @@ url = "https://mirrors.aliyun.com/pypi/simple"
 reference = "tsinghua"
 
 [[package]]
+name = "structlog"
+version = "25.4.0"
+description = "Structured Logging for Python"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "structlog-25.4.0-py3-none-any.whl", hash = "sha256:fe809ff5c27e557d14e613f45ca441aabda051d119ee5a0102aaba6ce40eed2c"},
+    {file = "structlog-25.4.0.tar.gz", hash = "sha256:186cd1b0a8ae762e29417095664adf1d6a31702160a46dacb7796ea82f7409e4"},
+]
+
+[package.dependencies]
+typing-extensions = {version = "*", markers = "python_version < \"3.11\""}
+
+[package.source]
+type = "legacy"
+url = "https://mirrors.aliyun.com/pypi/simple"
+reference = "tsinghua"
+
+[[package]]
 name = "sympy"
 version = "1.14.0"
 description = "Computer algebra system (CAS) in Python"
@@ -5689,6 +5709,22 @@ url = "https://mirrors.aliyun.com/pypi/simple"
 reference = "tsinghua"
 
 [[package]]
+name = "ulid"
+version = "1.1"
+description = "Pyhton version of this: https://github.com/alizain/ulid"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "ulid-1.1.tar.gz", hash = "sha256:0943e8a751ec10dfcdb4df2758f96dffbbfbc055d0b49288caf2f92125900d49"},
+]
+
+[package.source]
+type = "legacy"
+url = "https://mirrors.aliyun.com/pypi/simple"
+reference = "tsinghua"
+
+[[package]]
 name = "ultralytics"
 version = "8.3.137"
 description = "Ultralytics YOLO 🚀 for SOTA object detection, multi-object tracking, instance segmentation, pose estimation and image classification."
@@ -6135,4 +6171,4 @@ reference = "tsinghua"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "7e60f565352cce5def6d0ed60acdc15518cd5caf70d1fa25b1b947e2c602760a"
+content-hash = "785b29ae6d6f7ba877c6748047644ed97e425003e06046a3eccb48af42d5f4fd"

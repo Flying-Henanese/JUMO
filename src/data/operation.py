@@ -1,8 +1,13 @@
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
-from model import Task, ActiveTask
-from schema import TaskCreate, ActiveTaskCreate
-from model import Base
+from data.model import Task, ActiveTask
+from typing import List, Optional
+from data.schema import ActiveTaskCreate
+from data.model import Base
+from const.task_status_enum import TaskStatus
+from fastapi import HTTPException
+
+from wrapper.logger import log_with_time_consumption
 
 class TaskRepository:
     def __init__(self, db_url: str = "sqlite:////Users/zhoushujian/Projects/MinerU-Service/database/mineru"):
@@ -14,22 +19,23 @@ class TaskRepository:
     # 对于Task表的操作
 
     # 统一使用实例方法
-    def create_task(self, task: TaskCreate) -> Task:
+    @log_with_time_consumption(level = "INFO")
+    def create_task(self, task: Task) -> Task:
         '''
         创建任务
         '''
         db = self.SessionLocal()
         try:
-            db_task = Task(**task.dict())
-            db.add(db_task)
+            db.add(task)
             db.commit()
-            db.refresh(db_task)
-            return db_task
+            db.refresh(task)
+            return task
         except Exception as e:
             db.rollback()
             raise e
         finally:
             db.close()
+
 
     def get_task_by_id(self, task_id: str) -> Task:
         '''
@@ -50,10 +56,35 @@ class TaskRepository:
         finally:
             db.close()
 
+    @log_with_time_consumption(level = "INFO")
+    def update_task(self, task: Task) -> Task:
+        '''
+        通过传入的task对象更新task表中的记录
+        :param: Task类型对象(任务详情)
+        :return: Task类型对象(任务详情)
+        '''
+        db = self.SessionLocal()
+        try:
+            db_task = db.query(Task).filter(Task.task_id == task.task_id).first()
+            if db_task:
+                db_task.finish_time = task.finish_time
+                db_task.output_info = task.output_info
+                db.commit()
+                db.refresh(db_task)
+                return db_task
+            else:
+                raise HTTPException(status_code=404, detail="Task not found")
+        except Exception as e:
+            db.rollback()
+            raise e
+        finally:
+            db.close()
+
+
     # --------- ActiveTask ---------
     # 对于ActiveTask表的操作
-
-    def create_active_task(self, active: ActiveTaskCreate) -> ActiveTask:
+    @log_with_time_consumption(level = "INFO")
+    def create_active_task(self, active: ActiveTask) -> ActiveTask:
         '''
         创建一个正在执行的任务
         :param: ActiveTaskCreate类型对象(任务详情)
@@ -61,11 +92,10 @@ class TaskRepository:
         '''
         db = self.SessionLocal()
         try:
-            db_active = ActiveTask(**active.model_dump())
-            db.add(db_active)
+            db.add(active)
             db.commit()
-            db.refresh(db_active)
-            return db_active
+            db.refresh(active)
+            return active
         except Exception as e:
             db.rollback()
             raise e
@@ -83,10 +113,10 @@ class TaskRepository:
             return db.query(ActiveTask).filter(ActiveTask.task_id == task_id).first()
         finally:
             db.close()
-
-    def activate_task_by_id(self, task_id: str, status: str) -> ActiveTask:
+    @log_with_time_consumption(level = "INFO")
+    def activate_task_by_id(self, task_id: str, status: TaskStatus) -> ActiveTask:
         '''
-        激活一个任务令其开始执行
+        激活一个已经存在的任务标记其开始执行
         :param: task_id: 任务ID
         :param: status: 任务状态
         :return: ActiveTask类型对象(任务详情)
@@ -96,13 +126,15 @@ class TaskRepository:
             active_task = db.query(ActiveTask).filter(ActiveTask.task_id == task_id).first()
             if active_task:# 如果是已经存在的任务
                 # 那么久更新状态
-                active_task.status = "running" # 
+                active_task.status = TaskStatus.PROCESSING # 
                 db.commit()
                 db.refresh(active_task)
                 return active_task
             else:# 如果是新任务
                 # 那么久添加到active_task列表中
-                active_task = ActiveTaskCreate(task_id=task_id, status=status)
+                # 不管之前有没有正在运行的任务
+                # 这里都标记为正在排队，这样的话下次就可以从队列中取出任务了
+                active_task = ActiveTaskCreate(task_id=task_id, status=TaskStatus.QUEUED)
                 return self.create_active_task(active_task)
         except Exception as e:
             db.rollback()
@@ -110,6 +142,7 @@ class TaskRepository:
         finally:
             db.close()
 
+    @log_with_time_consumption(level = "INFO")
     def complete_task(self, task_id: str) -> Optional[ActiveTask]:
         '''
         完成分析任务并获取下一个待处理任务
@@ -128,18 +161,17 @@ class TaskRepository:
                 # 2. 获取下一个QUEUED状态的任务
                 next_task = (
                     db.query(ActiveTask)
-                    .filter(ActiveTask.status == "QUEUED")
+                    .filter(ActiveTask.status == TaskStatus.QUEUED)
                     .order_by(ActiveTask.queued_time)
                     .first()
                 )
                 
                 if next_task:
                     # 更新状态为运行中
-                    next_task.status = "RUNNING"
+                    next_task.status = TaskStatus.PROCESSING
                     db.commit()
                     db.refresh(next_task)
-                    
-                return next_task
+                    return db.query(Task).filter(Task.task_id == next_task.task_id).first()
             return None
         except Exception as e:
             db.rollback()
@@ -157,15 +189,43 @@ class TaskRepository:
         try:
             return (
                 db.query(ActiveTask)
-                .filter(ActiveTask.status == "QUEUED")
+                .filter(ActiveTask.status == TaskStatus.QUEUED)
                 .order_by(ActiveTask.start_time)
                 .first()
+            )
+        finally:
+            db.close()
+    
+    def is_any_active_task(self) -> ActiveTask:
+        '''
+        判断是否有正在执行的任务
+        '''
+        db = self.SessionLocal()
+        try:
+            return (
+                db.query(ActiveTask)
+                .filter(ActiveTask.status == "PROCESSING")
+                .first()
+            )
+        finally:
+            db.close()
+
+
+    def count_active_task(self) -> int:
+        '''
+        统计正在执行的任务数量
+        '''
+        db = self.SessionLocal()
+        try:
+            return (
+                db.query(ActiveTask)
+                .filter(ActiveTask.status == TaskStatus.QUEUED)
+                .count()
             )
         finally:
             db.close()
 
 if __name__ == "__main__":
     task = TaskRepository()
-    record = task.get_active_tasks()
-    print(task.get_active_tasks())
+    print(task.count_active_task())
 

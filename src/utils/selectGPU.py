@@ -1,10 +1,9 @@
 import pynvml
 from typing import List, Dict, override
 from dataclasses import dataclass
-from typing import List
 import torch
 import psutil
-
+from loguru import logger
 @dataclass
 class GPUInfo:
     index: int
@@ -51,7 +50,7 @@ class GPUPool:
                     device_type='mps'
                     )
                 ]
-        else:
+        elif torch.cuda.is_available():
             pynvml.nvmlInit()
             self.available_gpus = []
             
@@ -59,7 +58,6 @@ class GPUPool:
             for i in range(device_count):
                 handle = pynvml.nvmlDeviceGetHandleByIndex(i)
                 mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                util = pynvml.nvmlDeviceGetUtilizationRates(handle)
                 
                 if mem_info.free >= self.min_free_mem:
                     self.available_gpus.append(
@@ -71,14 +69,24 @@ class GPUPool:
                         )
                     )
             pynvml.nvmlShutdown() 
+        else:
+            self.available_gpus = [
+                GPUInfo(
+                    index=0, 
+                    free_mem=0, 
+                    total_mem=0, 
+                    device_type='cpu'
+                    )
+                ]
         self.available_gpus.sort(key=lambda x: x.free_mem, reverse=True)
-    
-    def get_best_gpu(self) -> int:
+        logger.info(f'当前可用GPU列表: {self.available_gpus}')
+ 
+    def get_best_gpu(self) -> GPUInfo:
         """获取当前最优GPU"""
         if not self.available_gpus:
             self.refresh()
-        print(f'selected gpu info: {self.available_gpus[0]}')
-        return self.available_gpus[0].index if self.available_gpus else 0
+        logger.info(f'选择:{self.available_gpus[0].device_type}-{self.available_gpus[0]} 执行任务')
+        return self.available_gpus[0] 
     
     def get_available_gpus(self) -> List[Dict]:
         """获取所有符合条件的GPU列表"""

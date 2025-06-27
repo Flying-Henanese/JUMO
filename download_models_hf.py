@@ -65,7 +65,7 @@ if __name__ == '__main__':
 
     json_url = 'https://github.com/opendatalab/MinerU/raw/master/magic-pdf.template.json'
     config_file_name = 'magic-pdf.json'
-    home_dir = os.path.expanduser('~')
+    # home_dir = os.path.expanduser('~')
     # config_file = os.path.join(home_dir, config_file_name)
     config_file = os.path.join(os.path.dirname(__file__), 'config/magic-pdf.json')
     os.makedirs(os.path.dirname(config_file), exist_ok=True)

@@ -1,6 +1,7 @@
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, Json
+from typing import Optional, Dict, Any
 from datetime import datetime
+
 
 # --------- Task ---------
 class TaskBase(BaseModel):
@@ -17,9 +18,8 @@ class TaskCreate(TaskBase):
     pass
 
 class TaskOut(TaskBase):
-    id: int
-    create_time: datetime
-    finish_time: Optional[datetime] = None
+    task_id: str
+    output_info: Json[Dict[str,Any]] = {}
 
     class Config:
         from_attributes = True
