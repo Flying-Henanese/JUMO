@@ -1,11 +1,12 @@
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, delete
 from data.model import Task, ActiveTask
 from typing import List, Optional
 from data.schema import ActiveTaskCreate
 from data.model import Base
 from const.task_status_enum import TaskStatus
 from fastapi import HTTPException
+from loguru import logger
 
 from wrapper.logger import log_with_time_consumption
 
@@ -14,6 +15,20 @@ class TaskRepository:
         self.engine = create_engine(db_url, connect_args={"check_same_thread": False})
         self.SessionLocal = sessionmaker(bind=self.engine, autoflush=False, autocommit=False)
         Base.metadata.create_all(bind=self.engine)
+        self.clear_active_tasks()  # 新增：初始化时清理active_task表
+
+    def clear_active_tasks(self):
+        """清理active_task表中的所有记录"""
+        db = self.SessionLocal()
+        try:
+            db.execute(delete(ActiveTask))
+            db.commit()
+            logger.info("成功清除active_task表")
+        except Exception as e:
+            db.rollback()
+            logger.error(f"清除active_task表失败: {e}")
+        finally:
+            db.close()
 
     # --------- Task ---------
     # 对于Task表的操作

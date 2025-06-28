@@ -1,2 +1,5 @@
 mineru-venv/
 models/
+logs/
+*.pyc
+.vscode/

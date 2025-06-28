@@ -4,24 +4,59 @@ import os
 import io
 from loguru import logger
 from minio.error import S3Error
+from threading import Lock
 
 class MinioConnection:
     '''
-    以后要改成单例模式（同一个配置下的）
+    单例模式下的Minio连接
+    在这里定义统一的minio操作
+    包括：
+    - 上传文件
+    - 下载文件
+    - 删除文件
     '''
 
-    # 初始化一个OSS连接
-    def __init__(self):
-        self.client = Minio(
-            endpoint=os.getenv('MINIO_ENDPOINT'),
-            access_key=os.getenv('MINIO_ACCESS_KEY'),
-            secret_key=os.getenv('MINIO_SECRET_KEY'),
-            secure=os.getenv('MINIO_SECURE', 'false').lower() == 'true'
-        )
-        logger.info(f"初始化Minio连接，endpoint: {os.getenv('MINIO_ENDPOINT')}, bucket_name: {os.getenv('MINIO_BUCKET_NAME')}")
-        # 注意这里是默认值,
-        # self.bucket_name = os.getenv('MINIO_BUCKET_NAME')
+    _instance = None
+    _lock = Lock()
 
+    def __new__(cls, *args, **kwargs):
+        if not cls._instance:
+            with cls._lock:
+                if not cls._instance:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._init_client()
+        return cls._instance
+
+    def _init_client(self):
+        endpoint = os.getenv('MINIO_ENDPOINT')
+        access_key = os.getenv('MINIO_ACCESS_KEY')
+        secret_key = os.getenv('MINIO_SECRET_KEY')
+        secure = os.getenv('MINIO_SECURE', 'false').lower() == 'true'
+
+        if not all([endpoint, access_key, secret_key]):
+            raise RuntimeError("MinIO环境变量配置不完整，请检查 MINIO_ENDPOINT、ACCESS_KEY、SECRET_KEY、BUCKET_NAME")
+
+        self.client = Minio(
+            endpoint=endpoint,
+            access_key=access_key,
+            secret_key=secret_key,
+            secure=secure
+        )
+        logger.info(f"初始化Minio连接: endpoint={endpoint}")
+
+# region
+    # # 初始化一个OSS连接
+    # def __init__(self):
+    #     self.client = Minio(
+    #         endpoint=os.getenv('MINIO_ENDPOINT'),
+    #         access_key=os.getenv('MINIO_ACCESS_KEY'),
+    #         secret_key=os.getenv('MINIO_SECRET_KEY'),
+    #         secure=os.getenv('MINIO_SECURE', 'false').lower() == 'true'
+    #     )
+    #     logger.info(f"初始化Minio连接，endpoint: {os.getenv('MINIO_ENDPOINT')}, bucket_name: {os.getenv('MINIO_BUCKET_NAME')}")
+    #     # 注意这里是默认值,
+    #     # self.bucket_name = os.getenv('MINIO_BUCKET_NAME')
+# endregion
     def upload_file_by_path(self, object_name: str, bucket_name:str, file_path: str) -> bool:
         try:
             self.client.fput_object(
