@@ -7,11 +7,19 @@ from data.model import Base
 from const.task_status_enum import TaskStatus
 from fastapi import HTTPException
 from loguru import logger
+import os
 
 from wrapper.logger import log_with_time_consumption
 
 class TaskRepository:
-    def __init__(self, db_url: str = "sqlite:////Users/zhoushujian/Projects/MinerU-Service/database/mineru"):
+    def __init__(self, db_url: str = None):
+        if db_url is None and not os.getenv("MINERU_DB_URL"):
+            db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'database', 'mineru')
+            db_url = f"sqlite:///{db_path}"
+            logger.info(f"使用默认路径初始化数据库: {db_url}")
+        elif os.getenv("MINERU_DB_URL"):
+            db_url = f'sqlite:///{os.getenv("MINERU_DB_URL")}'
+            logger.info(f"使用环境变量MINERU_DB_URL初始化数据库: {db_url}")
         self.engine = create_engine(db_url, connect_args={"check_same_thread": False})
         self.SessionLocal = sessionmaker(bind=self.engine, autoflush=False, autocommit=False)
         Base.metadata.create_all(bind=self.engine)
@@ -240,3 +248,4 @@ class TaskRepository:
             )
         finally:
             db.close()
+
