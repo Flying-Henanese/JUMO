@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from datetime import datetime
 from minio.error import S3Error
 
+from const.ocr_lang_enum import OCRLanguage
 from data.model import Task, ActiveTask
 from utils.id_generator import generate_short_uuid
 from const.task_status_enum import TaskStatus
@@ -25,7 +26,7 @@ async def analyze_pdf(
     output_bucket: str,
     ocr_enabled: bool = False,
     table_enabled: bool = False,
-    ocr_lang: str = "chi_sim",
+    ocr_lang: OCRLanguage = OCRLanguage.get_default().value
 ):
     """
     分析PDF文件的接口
@@ -45,7 +46,7 @@ async def analyze_pdf(
             output_bucket=output_bucket,
             ocr_enabled=ocr_enabled,
             table_enabled=table_enabled,
-            ocr_lang=ocr_lang,
+            ocr_lang=ocr_lang.value,
             output_info='',
             create_time=datetime.now(),
             finish_time=None,
@@ -100,5 +101,6 @@ async def get_task_status(task_id: str):
 
     return JSONResponse(content={
         "task_id": task.task_id,
-        "result": task.output_info,
+        "status": TaskStatus.COMPLETED,
+        "result": task.output_info
     })

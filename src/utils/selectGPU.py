@@ -22,6 +22,14 @@ class GPUInfo:
     def free_percent(self) -> float:
         return (self.free_mem / self.total_mem) * 100
     
+    @property
+    def free_mem_str(self) -> str:
+        return f'{self.free_mem / 1024**3:.2f}GB'
+    
+    @property
+    def total_mem_str(self) -> str:
+        return f'{self.total_mem / 1024**3:.2f}GB'
+
     @override
     def __repr__(self) -> str:
         return f'GPUInfo(index={self.index}, free_mem={self.free_mem}, total_mem={self.total_mem}, utilization={self.utilization})'
@@ -85,6 +93,8 @@ class GPUPool:
         """获取当前最优GPU"""
         if not self.available_gpus:
             self.refresh()
+        if self.available_gpus[0].free_mem < 1024**8:
+            logger.warning(f'显存不足，当前最优GPU显存利用率为{self.available_gpus[0].utilization}%')
         logger.info(f'选择:{self.available_gpus[0].device_type}-{self.available_gpus[0]} 执行任务')
         return self.available_gpus[0] 
     

@@ -1,6 +1,6 @@
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine, delete
-from data.model import Task, ActiveTask
+from data.model import Task, ActiveTask, TaskResponse
 from typing import List, Optional
 from data.schema import ActiveTaskCreate
 from data.model import Base
@@ -60,7 +60,8 @@ class TaskRepository:
         '''
         db = self.SessionLocal()
         try:
-            return db.query(Task).filter(Task.task_id == task_id).first()
+            task = db.query(Task).filter(Task.task_id == task_id).first()
+            return TaskResponse.from_orm(task) if task else None
         finally:
             db.close()
 
@@ -239,8 +240,3 @@ class TaskRepository:
             )
         finally:
             db.close()
-
-if __name__ == "__main__":
-    task = TaskRepository()
-    print(task.count_active_task())
-

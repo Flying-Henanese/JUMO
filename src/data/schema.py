@@ -9,6 +9,7 @@ class TaskBase(BaseModel):
     bucket_name: Optional[str] = None
     object_key: str
     output_bucket: Optional[str] = None
+    formula_enabled: int = 0
     ocr_enabled: int = 0
     table_enabled: int = 0
     ocr_lang: Optional[str] = None

@@ -1,6 +1,11 @@
 from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
+from typing import Optional
+import json
+from pydantic import BaseModel
+
+from const.task_status_enum import TaskStatus
 
 Base = declarative_base()
 
@@ -11,6 +16,7 @@ class Task(Base):
     bucket_name = Column(String)
     object_key = Column(String, nullable=False)
     output_bucket = Column(String)
+    formula_enabled = Column(Integer, nullable=False, default=0)
     ocr_enabled = Column(Integer, nullable=False, default=0)
     table_enabled = Column(Integer, nullable=False, default=0)
     ocr_lang = Column(String)
@@ -21,6 +27,26 @@ class Task(Base):
 
     def __repr__(self):
         return f'''Task(id={self.id}, task_id={self.task_id}, bucket_name={self.bucket_name}, object_key={self.object_key}, output_bucket={self.output_bucket}, ocr_enabled={self.ocr_enabled}, table_enabled={self.table_enabled}, ocr_lang={self.ocr_lang}, output_info={self.output_info}, create_time={self.create_time}, finish_time={self.finish_time})'''
+class TaskResponse(BaseModel):
+    '''响应模型,用于封装任务数据'''
+    task_id: str
+    status:str
+    output_info:Optional[dict]
+
+    @classmethod
+    def from_orm(cls,task):
+        '''从orm模型转换为响应模型'''
+        is_completed = False
+        try:
+            json.loads(task.output_info)
+            is_completed = True
+        except:
+            pass
+        return cls(
+            task_id=task.task_id,
+            status=TaskStatus.COMPLETED if is_completed else TaskStatus.FAILED,
+            output_info=json.loads(task.output_info) if is_completed else None
+            )
 
 class ActiveTask(Base):
     __tablename__ = "active_tasks"

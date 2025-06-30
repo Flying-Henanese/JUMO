@@ -1,135 +1,139 @@
-from magic_pdf.data.dataset import PymuDocDataset
-from magic_pdf.data.read_api import read_local_images, read_local_office
-from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
-from magic_pdf.config.enums import SupportedPdfParseMethod
-from magic_pdf.data.data_reader_writer import FileBasedDataWriter
 import os
 import tempfile
-from data.model import Task
-from wrapper.logger import log_with_time_consumption
-from utils.minio_tool import MinioConnection
-from const.file_extensions import PDF_EXTENSIONS,OFFICE_EXTENSIONS,IMAGE_EXTENSIONS
 import json
-from fastapi import HTTPException
-from data.operation import TaskRepository
-from minio.error import S3Error
 import datetime
 
+from fastapi import HTTPException
+from loguru import logger
+from minio.error import S3Error
+
+from mineru.cli.common import convert_pdf_bytes_to_bytes_by_pypdfium2, prepare_env
+from mineru.backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc_analyze
+from mineru.backend.pipeline.model_json_to_middle_json import result_to_middle_json as pipeline_result_to_middle_json
+from mineru.backend.pipeline.pipeline_middle_json_mkcontent import union_make as pipeline_union_make
+from mineru.data.data_reader_writer import FileBasedDataWriter
+from mineru.utils.enum_class import MakeMode
+
+from data.model import Task
+from wrapper.gpu_patch import with_gpu_selection
+from wrapper.logger import log_with_time_consumption
+from utils.minio_tool import MinioConnection
+from const.file_extensions import PDF_EXTENSIONS
+from data.operation import TaskRepository
 
 class PDFProcessor:
-    def __init__(self,minio_tool:MinioConnection,task_repository:TaskRepository):
-        self.minio_tool = minio_tool    
+    def __init__(self, minio_tool: MinioConnection, task_repository: TaskRepository):
+        self.minio_tool = minio_tool
         self.task_repository = task_repository
 
-    @log_with_time_consumption(level = "INFO")
-    def _sync_process_pdf(self,current_task:Task):
+    @log_with_time_consumption(level="INFO")
+    @with_gpu_selection
+    def _sync_process_pdf(self, current_task: Task):
         try:
-            extention = os.path.splitext(current_task.object_key)[-1]
-            file_bytes = self.minio_tool.get_file_byte(bucket_name = current_task.bucket_name,object_name = current_task.object_key)
-            with tempfile.TemporaryDirectory() as temp_dir:
-                output_dir = os.path.join(temp_dir, "output")
-                os.makedirs(output_dir, exist_ok=True)
-                # 把文件保存在临时文件夹中
-                with open(os.path.join(temp_dir, os.path.basename(current_task.object_key)), "wb") as f:
-                    f.write(file_bytes)
-                    # 读取pdf文件为pymudoc对象
-                    if extention in PDF_EXTENSIONS:
-                        # 读取pdf文件为pymupdf数据集
-                        ds = PymuDocDataset(file_bytes)
-                    elif extention in OFFICE_EXTENSIONS:
-                        # 需要使用office解析器把文档解析为pymudoc数据列表
-                        ds = read_local_office(temp_dir)[0]
-                    elif extention in IMAGE_EXTENSIONS:
-                        # 读取图片文件为一个数据集
-                        ds = read_local_images(temp_dir)[0]
-                    else:
-                        raise HTTPException(status_code=400, detail="不支持的文件类型")
-            # 获取pdf文件的名称，不包含后缀
-            name_without_ext = os.path.splitext(os.path.basename(current_task.object_key))[0]
-            # 存储文档中所有的图片
-            images_list = []
-            # 使用临时文件进行相关的操作
+            extension = os.path.splitext(current_task.object_key)[-1].lower()
+            if extension not in PDF_EXTENSIONS:
+                raise HTTPException(status_code=400, detail="不支持的文件类型")
+
+            file_bytes = self.minio_tool.get_file_byte(
+                bucket_name=current_task.bucket_name,
+                object_name=current_task.object_key
+            )
+
             with tempfile.TemporaryDirectory() as temp_dir:
                 output_dir = os.path.join(temp_dir, "output")
                 os.makedirs(output_dir, exist_ok=True)
 
-                # 判断PDF文档类型是否需要使用OCR进行处理
-                if ds.classify() == SupportedPdfParseMethod.OCR:
-                    # 如果是OCR类型，使用OCR模式进行分析
-                    infer_result = ds.apply(
-                        doc_analyze, 
-                        ocr=current_task.ocr_enabled, # 如果支持OCR,就按照用户传参指定是否使用
-                        table_enable = current_task.table_enabled,
-                        lang = current_task.ocr_lang )
-                    # 为OCR模式也指定输出目录
-                    pipe_result = infer_result.pipe_ocr_mode(FileBasedDataWriter(output_dir))
-                else:
-                    # 如果不是OCR类型，使用普通文本模式进行分析
-                    infer_result = ds.apply(doc_analyze, ocr=False)
-                    # 使用文本模式处理分析结果，并指定输出目录
-                    pipe_result = infer_result.pipe_txt_mode(FileBasedDataWriter(output_dir))
-                
-                # 提取并上传图片
-                # 同时将图片
-                for root, _, files in os.walk(output_dir):
+                # 文件名处理
+                name_without_ext = os.path.splitext(os.path.basename(current_task.object_key))[0]
+                file_name = name_without_ext
+                images_list = []
+
+                # 截取页范围（可配置）
+                pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(file_bytes, 0, None)
+                # 装饰器：自动选择可用 GPU，并设置 CUDA_VISIBLE_DEVICES
+                # pipeline_doc_analyze = with_gpu_selection(pipeline_doc_analyze)
+                # 调用新版 pipeline 分析方法
+                infer_results, all_image_lists, all_pdf_docs, lang_list, ocr_enabled_list = pipeline_doc_analyze(
+                    pdf_bytes_list=[pdf_bytes],
+                    lang_list=[current_task.ocr_lang or "ch"],
+                    parse_method="auto",
+                    formula_enable=current_task.formula_enabled,
+                    table_enable=current_task.table_enabled
+                )
+
+                model_list = infer_results[0]
+                images = all_image_lists[0]
+                pdf_doc = all_pdf_docs[0]
+                ocr_enabled = ocr_enabled_list[0]
+
+                local_image_dir, local_md_dir = prepare_env(output_dir, file_name, "auto")
+                image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+
+                # 获取中间 JSON
+                middle_json = pipeline_result_to_middle_json(
+                    model_list=model_list,
+                    images_list=images,
+                    pdf_doc=pdf_doc,
+                    image_writer=image_writer,
+                    lang=current_task.ocr_lang or "ch",
+                    ocr_enable=ocr_enabled,
+                    formula_enabled=current_task.formula_enabled
+                    #table_enable=current_task.table_enabled
+                )
+
+                # 上传图片
+                for root, _, files in os.walk(local_image_dir):
                     for file in files:
-                        if file.lower().endswith(('.png', '.jpg', '.jpeg')):
-                            with open(os.path.join(root, file), 'rb') as img_file:
-                                # 把图片先放入oss
+                        if file.lower().endswith((".png", ".jpg", ".jpeg")):
+                            with open(os.path.join(root, file), "rb") as img_f:
+                                remote_path = f"{current_task.task_id}/images/{file}"
                                 self.minio_tool.upload_file_by_bytes(
-                                    bucket_name = current_task.output_bucket,
-                                    object_name=f"{current_task.task_id}/images/{file}",
-                                    file_bytes=img_file.read(),
+                                    bucket_name=current_task.output_bucket,
+                                    object_name=remote_path,
+                                    file_bytes=img_f.read(),
                                     content_type=f"image/{file.split('.')[-1]}"
                                 )
-                                # 然后再把图片名称放入图片列表
-                                images_list.append(f"{current_task.task_id}/images/{file}")
-                
-                # 生成核心的3个文件
-                # 1. markdown文件
-                markdown_content = pipe_result.get_markdown(
-                    img_dir_or_bucket_prefix=f"{current_task.task_id}/images/"
-                )
-                # 2. content_list文件
-                content_list = json.dumps(pipe_result.get_content_list(image_dir_or_bucket_prefix=f"{current_task.task_id}/images/"))
-                # 3. middle_json文件
-                middle_json = pipe_result.get_middle_json()
+                                images_list.append(remote_path)
 
-
-                # 把生成的3个文件全部放入OSS
+                # markdown 内容
+                md_str = pipeline_union_make(middle_json["pdf_info"], MakeMode.MM_MD, f"{current_task.task_id}/images/")
                 self.minio_tool.upload_file_by_bytes(
-                    bucket_name = current_task.output_bucket,
+                    bucket_name=current_task.output_bucket,
                     object_name=f"{current_task.task_id}/{name_without_ext}.md",
-                    file_bytes=markdown_content.encode('utf-8'),
+                    file_bytes=md_str.encode("utf-8"),
                     content_type="text/markdown"
                 )
 
+                # content_list 内容
+                content_list = pipeline_union_make(middle_json["pdf_info"], MakeMode.CONTENT_LIST, f"{current_task.task_id}/images/")
                 self.minio_tool.upload_file_by_bytes(
-                    bucket_name = current_task.output_bucket,
+                    bucket_name=current_task.output_bucket,
                     object_name=f"{current_task.task_id}/{name_without_ext}_content_list.json",
-                    file_bytes=content_list.encode('utf-8'),
+                    file_bytes=json.dumps(content_list, ensure_ascii=False, indent=4).encode("utf-8"),
                     content_type="application/json"
                 )
 
+                # middle_json 内容
                 self.minio_tool.upload_file_by_bytes(
-                    bucket_name = current_task.output_bucket,
+                    bucket_name=current_task.output_bucket,
                     object_name=f"{current_task.task_id}/{name_without_ext}_middle.json",
-                    file_bytes=middle_json.encode('utf-8'),
+                    file_bytes=json.dumps(middle_json, ensure_ascii=False, indent=4).encode("utf-8"),
                     content_type="application/json"
                 )
 
-            current_task.output_info = json.dumps({
-                "markdown": f"{current_task.task_id}/{name_without_ext}.md",
-                "content_list": f"{current_task.task_id}/{name_without_ext}_content_list.json",
-                "middle_json": f"{current_task.task_id}/{name_without_ext}_middle.json",
-                "images": images_list
-            })
+                # 写入任务 output_info
+                current_task.output_info = json.dumps({
+                    "markdown": f"{current_task.task_id}/{name_without_ext}.md",
+                    "content_list": f"{current_task.task_id}/{name_without_ext}_content_list.json",
+                    "middle_json": f"{current_task.task_id}/{name_without_ext}_middle.json",
+                    "images": images_list
+                })
+
         except S3Error as e:
             current_task.output_info = str(e)
         except Exception as e:
+            logger.exception(e)
             current_task.output_info = str(e)
         finally:
-            # 设置完成时间
             current_task.finish_time = datetime.datetime.now()
-            # 把完成的信息写入task表
             self.task_repository.update_task(current_task)

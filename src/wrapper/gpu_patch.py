@@ -1,32 +1,24 @@
-from magic_pdf.model.doc_analyze_by_custom_model import may_batch_image_analyze as original_may_batch
 from functools import wraps
-
-from utils.selectGPU import GPUPool
-import os
 import torch
+import os
 from loguru import logger
-from utils.selectGPU import GPUInfo
+from utils.selectGPU import GPUPool, GPUInfo
 
-# 初始化GPU池
 gpu_pool = GPUPool()
 
-def patch_gpu_selection():
+def with_gpu_selection(func):
     """
-    为may_batch_image_analyze添加GPU选择功能的装饰器
+    装饰器：自动选择可用 GPU，并设置 CUDA_VISIBLE_DEVICES
     """
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            selected_gpu: GPUInfo = gpu_pool.get_best_gpu()
-            if selected_gpu.device_type == 'cuda': # 只有在这个情况下才涉及选择最优GPU的问题
-                if torch.cuda.is_available():
-                    torch.cuda.set_device(selected_gpu.index)
-                os.environ['CUDA_VISIBLE_DEVICES'] = str(selected_gpu.index)
-                logger.info(f"Using CUDA GPU {selected_gpu.index}")
-            else:
-                logger.info(f"Using CPU/MPS/NPU")
-            return func(*args, **kwargs)
-        return wrapper
-
-    import magic_pdf.model.doc_analyze_by_custom_model as module
-    module.may_batch_image_analyze = decorator(original_may_batch)
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        selected_gpu: GPUInfo = gpu_pool.get_best_gpu()
+        if selected_gpu.device_type == 'cuda' and torch.cuda.is_available():
+            # 按照pytorch官方的建议，优先使用cuda_visible_devices
+            # torch.cuda.set_device(selected_gpu.index)
+            os.environ['CUDA_VISIBLE_DEVICES'] = str(selected_gpu.index)
+            logger.info(f"Using CUDA GPU {selected_gpu.index}")
+        else:
+            logger.info("Using CPU/NPU/MPS")
+        return func(*args, **kwargs)
+    return wrapper
