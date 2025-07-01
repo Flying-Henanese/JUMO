@@ -1,5 +1,5 @@
 import pynvml
-from typing import List, Dict, override
+from typing import List, Dict
 from dataclasses import dataclass
 import torch
 import psutil
@@ -30,7 +30,6 @@ class GPUInfo:
     def total_mem_str(self) -> str:
         return f'{self.total_mem / 1024**3:.2f}GB'
 
-    @override
     def __repr__(self) -> str:
         return f'GPUInfo(index={self.index}, free_mem={self.free_mem}, total_mem={self.total_mem}, utilization={self.utilization})'
 
