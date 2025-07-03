@@ -16,7 +16,6 @@ from data.operation import TaskRepository
 from utils.minio_tool import MinioConnection
 from processor.pdf_processor import PDFProcessor
 from concurrent.futures import ThreadPoolExecutor
-
 # 新版的mineru好像已经不在需要配置文件了
 # os.environ['MINERU_TOOLS_CONFIG_JSON'] = 'config/mineru.json'
 # 从国内的modelscope下载模型，避免huggingface无法访问的问题

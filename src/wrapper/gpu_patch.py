@@ -13,11 +13,12 @@ def with_gpu_selection(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         selected_gpu: GPUInfo = gpu_pool.get_best_gpu()
-        if selected_gpu.device_type == 'cuda' and torch.cuda.is_available():
-            # 按照pytorch官方的建议，优先使用cuda_visible_devices
-            # torch.cuda.set_device(selected_gpu.index)
+        if selected_gpu.device_type == 'CUDA' and torch.cuda.is_available():
             os.environ['CUDA_VISIBLE_DEVICES'] = str(selected_gpu.index)
             logger.info(f"Using CUDA GPU {selected_gpu.index}")
+        elif selected_gpu.device_type == 'NPU':
+            os.environ['MINERU_NPU_DEVICES'] = str(selected_gpu.index)
+            logger.info(f'Using NPU {selected_gpu.index}')
         else:
             logger.info("Using CPU/NPU/MPS")
         return func(*args, **kwargs)
