@@ -15,6 +15,14 @@ from const.task_status_enum import TaskStatus
 from processor.tasking.pdf_task import process_pdf_task
 from startup import task_repository,minio_tool
 from fastapi import UploadFile, File
+# 为了让接口返回压缩包
+import zipfile
+from loguru import logger
+
+from fastapi.responses import StreamingResponse
+from io import BytesIO
+import zipfile
+
 # 实例化资源
 router = APIRouter()
 
@@ -178,3 +186,45 @@ async def get_task_status(task_id: str):
         "status": TaskStatus.COMPLETED,
         "result": task.output_info
     })
+
+
+
+@router.get("/download-task-files/{task_id}", response_class=StreamingResponse)
+async def download_task_files(task_id: str):
+    try:
+        task = task_repository.get_task_by_id(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="任务不存在")
+        
+        if not task.output_info:
+            raise HTTPException(status_code=400, detail="任务尚未完成")
+        
+        output_info = task.output_info
+
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for file_type, file_path in output_info.items():
+                if file_type == 'images':
+                    for img_path in file_path:
+                        img_data = minio_tool.get_file_byte(
+                            bucket_name=task.output_bucket,
+                            object_name=img_path
+                        )
+                        zipf.writestr(img_path, img_data)
+                else:
+                    file_data = minio_tool.get_file_byte(
+                        bucket_name=task.output_bucket,
+                        object_name=file_path
+                    )
+                    zipf.writestr(file_path, file_data)
+
+        zip_buffer.seek(0)
+        return StreamingResponse(
+            zip_buffer,
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename={task_id}_files.zip"}
+        )
+    except Exception as e:
+        logger.error(f"下载任务文件失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"下载失败: {str(e)}")
+        

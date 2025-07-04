@@ -31,6 +31,7 @@ class TaskResponse(BaseModel):
     '''响应模型,用于封装任务数据'''
     task_id: str
     status:str
+    output_bucket:str
     output_info:Optional[dict]
 
     @classmethod
@@ -45,6 +46,7 @@ class TaskResponse(BaseModel):
         return cls(
             task_id=task.task_id,
             status=TaskStatus.COMPLETED if is_completed else TaskStatus.FAILED,
+            output_bucket=task.output_bucket,
             output_info=json.loads(task.output_info) if is_completed else None
             )
 
