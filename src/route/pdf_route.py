@@ -4,17 +4,17 @@ pdf_route.py
 定义 PDF 相关的接口路由，包括分析 PDF 接口和查询任务状态接口。
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
 from datetime import datetime
 from minio.error import S3Error
-
 from const.ocr_lang_enum import OCRLanguage
 from data.model import Task, ActiveTask
 from utils.id_generator import generate_short_uuid
 from const.task_status_enum import TaskStatus
 from processor.tasking.pdf_task import process_pdf_task
 from startup import task_repository,minio_tool
+from fastapi import UploadFile, File
 # 实例化资源
 router = APIRouter()
 
@@ -81,6 +81,80 @@ async def analyze_pdf(
     except Exception as e:
         raise HTTPException(status_code=429, detail=str(e))
 
+
+@router.post("/upload-and-analyze-pdf/")
+async def upload_and_analyze_pdf(
+    background_tasks: BackgroundTasks,
+    output_bucket: str,
+    file: UploadFile = File(...),
+    ocr_enabled: bool = False,
+    table_enabled: bool = False,
+    ocr_lang: OCRLanguage = OCRLanguage.get_default().value
+):
+    """
+    上传并分析PDF文件的接口
+    """
+    try:
+        # 生成唯一任务ID
+        task_id = generate_short_uuid()
+        
+        # 上传文件到MinIO
+        bucket_name = "uploads"  # 可以配置为常量
+        object_name = f"{task_id}/{file.filename}"
+        # 读取文件内容为字节流
+        file_content = await file.read()
+        # 获取文件类型（默认为application/octet-stream）
+        content_type = file.content_type or "application/octet-stream"
+        # 调用minio上传
+        minio_tool.upload_file_by_bytes(
+            bucket_name=bucket_name,
+            object_name=object_name,
+            file_bytes=file_content,
+            content_type=content_type
+        )
+
+        # 创建任务
+        task_to_add = Task(
+            task_id=task_id,
+            object_key=object_name,
+            bucket_name=bucket_name,
+            output_bucket=output_bucket,
+            ocr_enabled=ocr_enabled,
+            table_enabled=table_enabled,
+            ocr_lang=ocr_lang.value,
+            output_info='',
+            create_time=datetime.now(),
+            finish_time=None,
+        )
+
+        active_task = ActiveTask(
+            task_id=task_id,
+            start_time=datetime.now(),
+            queued_time=None,
+            status=TaskStatus.QUEUED,
+        )
+
+        if not task_repository.is_any_active_task():
+            active_task.status = TaskStatus.PROCESSING
+        elif task_repository.count_active_task() >= 10:
+            return JSONResponse(content={
+                "task_id": "",
+                "status": TaskStatus.FAILED,
+                "message": "队列已满，请稍后再试"
+            })
+
+        task_repository.create_task(task_to_add)
+        active_task = task_repository.create_active_task(active_task)
+        background_tasks.add_task(process_pdf_task, task_to_add)
+
+        return JSONResponse(content={
+            "task_id": task_id,
+            "status": active_task.status,
+            "message": "任务已加入队列" if active_task.status == TaskStatus.QUEUED else "任务正在处理"
+        })
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/task-status/{task_id}")
 async def get_task_status(task_id: str):
