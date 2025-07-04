@@ -97,27 +97,30 @@ class PDFProcessor:
 
                 # markdown 内容
                 md_str = pipeline_union_make(middle_json["pdf_info"], MakeMode.MM_MD, f"{current_task.task_id}/images/")
+                clean_md = md_str.encode("utf-8", "surrogatepass").decode("utf-16", "ignore")
                 self.minio_tool.upload_file_by_bytes(
                     bucket_name=current_task.output_bucket,
                     object_name=f"{current_task.task_id}/{name_without_ext}.md",
-                    file_bytes=md_str.encode("utf-8"),
+                    file_bytes=clean_md.encode("utf-8"),
                     content_type="text/markdown"
                 )
 
                 # content_list 内容
                 content_list = pipeline_union_make(middle_json["pdf_info"], MakeMode.CONTENT_LIST, f"{current_task.task_id}/images/")
+                file_content = json.dumps(content_list, ensure_ascii=False, indent=4).encode("utf-8", "surrogatepass").decode("utf-16", "ignore")
                 self.minio_tool.upload_file_by_bytes(
                     bucket_name=current_task.output_bucket,
                     object_name=f"{current_task.task_id}/{name_without_ext}_content_list.json",
-                    file_bytes=json.dumps(content_list, ensure_ascii=False, indent=4).encode("utf-8"),
+                    file_bytes=file_content.encode("utf-8"),
                     content_type="application/json"
                 )
 
                 # middle_json 内容
+                middle_json_content = json.dumps(middle_json, ensure_ascii=False, indent=4).encode("utf-8","surrogatepass").decode("utf-16","ignore")
                 self.minio_tool.upload_file_by_bytes(
                     bucket_name=current_task.output_bucket,
                     object_name=f"{current_task.task_id}/{name_without_ext}_middle.json",
-                    file_bytes=json.dumps(middle_json, ensure_ascii=False, indent=4).encode("utf-8"),
+                    file_bytes=middle_json_content.encode("utf-8"),
                     content_type="application/json"
                 )
 
