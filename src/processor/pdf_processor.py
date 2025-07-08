@@ -20,6 +20,7 @@ from wrapper.logger import log_with_time_consumption
 from utils.minio_tool import MinioConnection
 from const.file_extensions import PDF_EXTENSIONS
 from data.operation import TaskRepository
+from processor.markdown_splitter import process_markdown
 
 class PDFProcessor:
     def __init__(self, minio_tool: MinioConnection, task_repository: TaskRepository):
@@ -97,17 +98,26 @@ class PDFProcessor:
 
                 # markdown 内容
                 md_str = pipeline_union_make(middle_json["pdf_info"], MakeMode.MM_MD, f"{current_task.task_id}/images/")
-                clean_md = md_str.encode("utf-8", "surrogatepass").decode("utf-16", "ignore")
+                clean_md = md_str.encode("utf-8", "surrogatepass").decode("utf-8", "ignore")
                 self.minio_tool.upload_file_by_bytes(
                     bucket_name=current_task.output_bucket,
                     object_name=f"{current_task.task_id}/{name_without_ext}.md",
                     file_bytes=clean_md.encode("utf-8"),
                     content_type="text/markdown"
                 )
+                
+                # 切分处理后的markdown内容
+                splitted_markdown = process_markdown(clean_md)
+                self.minio_tool.upload_file_by_bytes(
+                    bucket_name=current_task.output_bucket,
+                    object_name=f"{current_task.task_id}/{name_without_ext}_splitted.md",
+                    file_bytes=splitted_markdown.encode("utf-8"),
+                    content_type="text/markdown"
+                )
 
                 # content_list 内容
                 content_list = pipeline_union_make(middle_json["pdf_info"], MakeMode.CONTENT_LIST, f"{current_task.task_id}/images/")
-                file_content = json.dumps(content_list, ensure_ascii=False, indent=4).encode("utf-8", "surrogatepass").decode("utf-16", "ignore")
+                file_content = json.dumps(content_list, ensure_ascii=False, indent=4).encode("utf-8", "surrogatepass").decode("utf-8", "ignore")
                 self.minio_tool.upload_file_by_bytes(
                     bucket_name=current_task.output_bucket,
                     object_name=f"{current_task.task_id}/{name_without_ext}_content_list.json",
@@ -129,7 +139,8 @@ class PDFProcessor:
                     "markdown": f"{current_task.task_id}/{name_without_ext}.md",
                     "content_list": f"{current_task.task_id}/{name_without_ext}_content_list.json",
                     "middle_json": f"{current_task.task_id}/{name_without_ext}_middle.json",
-                    "images": images_list
+                    "images": images_list,
+                    "splitted_markdown": f"{current_task.task_id}/{name_without_ext}_splitted.md"
                 })
 
         except S3Error as e:

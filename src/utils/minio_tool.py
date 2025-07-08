@@ -137,3 +137,15 @@ class MinioConnection:
                 return False
             logger.error(f"文件不存在: {e}, object_name: {object_name}, bucket_name: {bucket_name}")
             raise HTTPException(status_code=404, detail=f"文件不存在: {e}")
+    
+    def bucket_exists(self, bucket_name: str) -> bool:
+        """
+        检查存储桶是否存在
+        :param bucket_name: 存储桶名称
+        :return: 存在返回True，否则返回False
+        """
+        try:
+            return self.client.bucket_exists(bucket_name)
+        except Exception as e:
+            logger.error(f"检查存储桶失败: {bucket_name}, 异常: {e}")
+            return False

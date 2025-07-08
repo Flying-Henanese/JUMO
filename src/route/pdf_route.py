@@ -105,6 +105,10 @@ async def upload_and_analyze_pdf(
     上传并分析PDF文件的接口
     """
     try:
+        # 检查output_bucket是否存在
+        if not minio_tool.bucket_exists(output_bucket):
+            raise HTTPException(status_code=400, detail=f"输出存储桶{output_bucket}不存在")
+            
         # 生成唯一任务ID
         task_id = generate_short_uuid()
         
