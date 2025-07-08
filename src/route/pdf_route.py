@@ -22,10 +22,12 @@ from loguru import logger
 from fastapi.responses import StreamingResponse
 from io import BytesIO
 import zipfile
+from utils.selectGPU import GPUPool
+from wrapper.gpu_patch import gpu_pool
 
 # 实例化资源
 router = APIRouter()
-
+gpu_pool = GPUPool()
 @router.post("/analyze-pdf/")
 async def analyze_pdf(
     pdf_path: str, 
@@ -67,7 +69,7 @@ async def analyze_pdf(
             status=TaskStatus.QUEUED,
         )
 
-        if not task_repository.is_any_active_task():
+        if not task_repository.is_any_active_task() and gpu_pool.get_available_gpus():
             active_task.status = TaskStatus.PROCESSING
         elif task_repository.count_active_task() >= 10:
             return JSONResponse(content={
@@ -142,9 +144,10 @@ async def upload_and_analyze_pdf(
             status=TaskStatus.QUEUED,
         )
 
-        if not task_repository.is_any_active_task():
+        # 如果当前没有正在执行的任务并且有GPU资源
+        if not task_repository.is_any_active_task() and gpu_pool.get_available_gpus():
             active_task.status = TaskStatus.PROCESSING
-        elif task_repository.count_active_task() >= 10:
+        elif task_repository.count_active_task() >= 20:
             return JSONResponse(content={
                 "task_id": "",
                 "status": TaskStatus.FAILED,
@@ -227,4 +230,60 @@ async def download_task_files(task_id: str):
     except Exception as e:
         logger.error(f"下载任务文件失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"下载失败: {str(e)}")
+
+
+@router.post("/reprocess-task/{task_id}")
+async def reprocess_task(
+    task_id: str,
+    background_tasks: BackgroundTasks
+):
+    """
+    重新处理指定任务
+    :param task_id: 要重新处理的任务ID
+    :return: 任务状态信息
+    """
+    try:
+        # 获取原任务
+        task = task_repository.get_task_by_id(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="任务不存在")
+        
+        # 检查任务是否已完成
+        if task.finish_time is None:
+            raise HTTPException(status_code=400, detail="任务尚未完成，无需重新处理")
+        
+        # 创建新的活跃任务
+        active_task = ActiveTask(
+            task_id=task_id,
+            start_time=datetime.now(),
+            queued_time=None,
+            status=TaskStatus.QUEUED,
+        )
+        
+        # 如果有可用GPU且无其他活跃任务，则直接开始处理
+        if not task_repository.is_any_active_task() and gpu_pool.get_available_gpus():
+            active_task.status = TaskStatus.PROCESSING
+        elif task_repository.count_active_task() >= 20:
+            raise HTTPException(status_code=429, detail="队列已满，请稍后再试")
+        
+        # 重置原任务状态（可选）
+        task.finish_time = None
+        task.output_info = ''
+        task_repository.update_task(task)
+        
+        # 添加到活跃任务表
+        active_task = task_repository.create_active_task(active_task)
+        background_tasks.add_task(process_pdf_task, task)
+        
+        return JSONResponse(content={
+            "task_id": task_id,
+            "status": active_task.status,
+            "message": "任务已加入队列" if active_task.status == TaskStatus.QUEUED else "任务正在处理"
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"重新处理任务失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"重新处理失败: {str(e)}")
         

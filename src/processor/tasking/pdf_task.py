@@ -7,20 +7,13 @@ pdf_tasks.py
 """
 
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 from loguru import logger
 from startup import task_repository, pdf_processor, thread_pool
 from data.model import Task
-from data.operation import TaskRepository
 from processor.pdf_processor import PDFProcessor
+from utils.selectGPU import GPUPool
 
-# 单例资源
-# task_repository = TaskRepository()
-# pdf_processor = PDFProcessor(
-#     minio_tool=None,  # 注意：如果你有统一的 startup.py，推荐从那里引入
-#     task_repository=task_repository
-# )
-# thread_pool = ThreadPoolExecutor(max_workers=1)
+gpu_pool = GPUPool()
 
 async def process_pdf_task(
     task_to_add: Task,
