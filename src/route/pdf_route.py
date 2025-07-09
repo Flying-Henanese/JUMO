@@ -4,7 +4,7 @@ pdf_route.py
 定义 PDF 相关的接口路由，包括分析 PDF 接口和查询任务状态接口。
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Request
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
 from datetime import datetime
 from minio.error import S3Error
@@ -15,6 +15,7 @@ from const.task_status_enum import TaskStatus
 from processor.tasking.pdf_task import process_pdf_task
 from startup import task_repository,minio_tool
 from fastapi import UploadFile, File
+from typing import List
 # 为了让接口返回压缩包
 import zipfile
 from loguru import logger
@@ -290,4 +291,40 @@ async def reprocess_task(
     except Exception as e:
         logger.error(f"重新处理任务失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"重新处理失败: {str(e)}")
+
+
+@router.post("/batch-task-status")
+async def get_batch_task_status(task_ids: List[str]):
+    """
+    批量获取任务状态接口
+    :param task_ids: 任务ID列表
+    :return: 包含所有任务状态的列表
+    """
+    results = []
+    
+    for task_id in task_ids:
+        active_task = task_repository.get_active_task(task_id)
+        if active_task:
+            results.append({
+                "task_id": active_task.task_id,
+                "status": active_task.status,
+                "message": "任务正在处理" if active_task.status == TaskStatus.PROCESSING else "任务已加入队列"
+            })
+            continue
+            
+        task = task_repository.get_task_by_id(task_id)
+        if task:
+            results.append({
+                "task_id": task.task_id,
+                "status": TaskStatus.COMPLETED,
+                "result": task.output_info
+            })
+        else:
+            results.append({
+                "task_id": task_id,
+                "status": "not_found",
+                "message": "任务不存在"
+            })
+    
+    return JSONResponse(content=results)
         
