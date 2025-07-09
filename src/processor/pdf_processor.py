@@ -2,6 +2,7 @@ import os
 import tempfile
 import json
 import datetime
+import io
 
 from fastapi import HTTPException
 from loguru import logger
@@ -18,9 +19,10 @@ from data.model import Task
 from wrapper.gpu_patch import with_gpu_selection
 from wrapper.logger import log_with_time_consumption
 from utils.minio_tool import MinioConnection
-from const.file_extensions import PDF_EXTENSIONS
+from const.file_extensions import PDF_EXTENSIONS,IMAGE_EXTENSIONS
 from data.operation import TaskRepository
 from processor.markdown_splitter import process_markdown
+from PIL import Image
 
 class PDFProcessor:
     def __init__(self, minio_tool: MinioConnection, task_repository: TaskRepository):
@@ -32,13 +34,20 @@ class PDFProcessor:
     def _sync_process_pdf(self, current_task: Task):
         try:
             extension = os.path.splitext(current_task.object_key)[-1].lower()
-            if extension not in PDF_EXTENSIONS:
+            if extension not in PDF_EXTENSIONS and extension not in IMAGE_EXTENSIONS:
                 raise HTTPException(status_code=400, detail="不支持的文件类型")
 
             file_bytes = self.minio_tool.get_file_byte(
                 bucket_name=current_task.bucket_name,
                 object_name=current_task.object_key
             )
+            # 为了支持图片文件，需要先转换为 PDF
+            if extension in IMAGE_EXTENSIONS:
+                image_bytes = Image.open(io.BytesIO(file_bytes)).convert("RGB")
+                pdf_bytes = io.BytesIO()
+                image_bytes.save(pdf_bytes, format="PDF")
+                pdf_bytes.seek(0)  # 重置指针到开头
+                file_bytes = pdf_bytes.getvalue()  # 获取PDF字节数据
 
             with tempfile.TemporaryDirectory() as temp_dir:
                 output_dir = os.path.join(temp_dir, "output")
