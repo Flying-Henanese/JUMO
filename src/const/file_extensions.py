@@ -2,3 +2,5 @@
 PDF_EXTENSIONS = [".pdf"]
 OFFICE_EXTENSIONS = [".ppt", ".pptx", ".doc", ".docx"]
 IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg"]
+WORD_EXTENTIONS = [".docx", ".doc"]
+PPT_EXTENTIONS = [".ppt", ".pptx"]
