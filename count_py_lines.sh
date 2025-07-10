@@ -16,4 +16,4 @@ while IFS= read -r file; do
 done < <(find src -type f -name "*.py")
 
 # 输出总行数
-echo "\n总有效代码行数: $total_lines 行"
+echo "总有效代码行数: $total_lines 行"

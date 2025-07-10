@@ -22,7 +22,7 @@ import mineru.utils.config_reader as config_reader
 # os.environ['MINERU_TOOLS_CONFIG_JSON'] = 'config/mineru.json'
 # 从国内的modelscope下载模型，避免huggingface无法访问的问题
 os.environ['MINERU_MODEL_SOURCE'] = 'modelscope'
-# os.environ['MINERU_MODEL_CACHE'] = '/data/.cache/modelscope/hub'
+# os.environ['MINERU_MODEL_CACHE'] = '~/.cache/modelscope/hub'
 os.environ['MINERU_CONFIG_DIR'] = './config/'
 os.environ['MINERU_DEVICE_MODE'] = 'mps'
 # "MINERU_MAX_CONCURRENT_TASKS": None,
