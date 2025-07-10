@@ -18,6 +18,8 @@ from processor.pdf_processor import PDFProcessor
 from concurrent.futures import ThreadPoolExecutor
 from wrapper.load_gpu import custom_get_device
 import mineru.utils.config_reader as config_reader
+from processor.converters.table_to_markdown import patch_batchanalyze_output_to_markdown    
+
 # 新版的mineru好像已经不在需要配置文件了
 # os.environ['MINERU_TOOLS_CONFIG_JSON'] = 'config/mineru.json'
 # 从国内的modelscope下载模型，避免huggingface无法访问的问题
@@ -37,3 +39,5 @@ pdf_processor = PDFProcessor(minio_tool=minio_tool, task_repository=task_reposit
 thread_pool = ThreadPoolExecutor(max_workers=int(os.getenv('MAX_CURRENT_WORKER', 8)))
 # 应用monkey patch
 config_reader.get_device = custom_get_device
+
+patch_batchanalyze_output_to_markdown()
