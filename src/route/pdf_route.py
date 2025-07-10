@@ -19,7 +19,7 @@ from typing import List
 # 为了让接口返回压缩包
 import zipfile
 from loguru import logger
-
+import os
 from fastapi.responses import StreamingResponse
 from io import BytesIO
 import zipfile
@@ -29,6 +29,9 @@ from wrapper.gpu_patch import gpu_pool
 # 实例化资源
 router = APIRouter()
 gpu_pool = GPUPool()
+MAX_WORKERS = int(os.getenv('MAX_WORKERS', 8))
+MAX_QUEUING_TASKS = int(os.getenv('MAX_QUEUING_TASKS', 20))
+
 @router.post("/analyze-pdf/")
 async def analyze_pdf(
     pdf_path: str, 
@@ -70,9 +73,9 @@ async def analyze_pdf(
             status=TaskStatus.QUEUED,
         )
 
-        if not task_repository.is_any_active_task() and gpu_pool.get_available_gpus():
+        if task_repository.count_processing_task() <  MAX_WORKERS and gpu_pool.get_available_gpus():
             active_task.status = TaskStatus.PROCESSING
-        elif task_repository.count_active_task() >= 10:
+        elif task_repository.count_active_task() >= 20:
             return JSONResponse(content={
                 "task_id": "",
                 "status": TaskStatus.FAILED,
@@ -149,10 +152,12 @@ async def upload_and_analyze_pdf(
             status=TaskStatus.QUEUED,
         )
 
-        # 如果当前没有正在执行的任务并且有GPU资源
-        if not task_repository.is_any_active_task() and gpu_pool.get_available_gpus():
+        # 如果当前正在处理的任务数量小于MAX_WORKERS
+        # 并且有GPU计算资源
+        # 那么就标记为处理中，开始处理
+        if task_repository.count_processing_task() < MAX_WORKERS and gpu_pool.get_available_gpus():
             active_task.status = TaskStatus.PROCESSING
-        elif task_repository.count_active_task() >= 20:
+        elif task_repository.count_active_task() >= MAX_QUEUING_TASKS:
             return JSONResponse(content={
                 "task_id": "",
                 "status": TaskStatus.FAILED,

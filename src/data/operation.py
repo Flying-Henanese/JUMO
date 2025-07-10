@@ -249,3 +249,17 @@ class TaskRepository:
         finally:
             db.close()
 
+    def count_processing_task(self) -> int:
+        '''
+        统计正在执行的任务数量
+        '''
+        db = self.SessionLocal()
+        try:
+            return (
+                db.query(ActiveTask)
+                .filter(ActiveTask.status == TaskStatus.PROCESSING)
+                .count()
+            )
+        finally:
+            db.close()
+
