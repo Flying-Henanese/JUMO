@@ -131,7 +131,7 @@ class PDFProcessor:
                 )
 
                 # content_list 内容
-                content_list = pipeline_union_make(middle_json["pdf_info"], MakeMode.CONTENT_LIST, f"{current_task.task_id}/images/")
+                content_list = pipeline_union_make(middle_json["pdf_info"], MakeMode.CONTENT_LIST, f"{current_task.task_id}/images")
                 file_content = json.dumps(content_list, ensure_ascii=False, indent=4).encode("utf-8", "surrogatepass").decode("utf-8", "ignore")
                 self.minio_tool.upload_file_by_bytes(
                     bucket_name=current_task.output_bucket,
