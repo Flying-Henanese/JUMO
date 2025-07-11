@@ -2,7 +2,8 @@
 # 如果使用NVIDIA的GPU环境，则换成使用这个镜像
 FROM nvidia/cuda:12.2.0-base-ubuntu22.04
 #在ubuntu基础上安装Python 3.12
-RUN apt-get update && apt-get install -y python3.12 python3-pip
+# 安装Python和LibreOffice
+RUN apt-get update && apt-get install -y python3.12 python3-pip libreoffice
 
 # 使用官方Python 3.12基础镜像
 # FROM python:3.12-slim
