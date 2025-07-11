@@ -111,7 +111,7 @@ class PDFProcessor:
                                 images_list.append(remote_path)
 
                 # markdown 内容
-                md_str = pipeline_union_make(middle_json["pdf_info"], MakeMode.MM_MD, f"{current_task.task_id}/images/")
+                md_str = pipeline_union_make(middle_json["pdf_info"], MakeMode.MM_MD, f"{current_task.task_id}/images")
                 clean_md = md_str.encode("utf-8", "surrogatepass").decode("utf-8", "ignore")
                 self.minio_tool.upload_file_by_bytes(
                     bucket_name=current_task.output_bucket,
