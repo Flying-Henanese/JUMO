@@ -52,6 +52,7 @@ setup_logger()
 task_repository = TaskRepository()
 minio_tool = MinioConnection()
 pdf_processor = PDFProcessor(minio_tool=minio_tool, task_repository=task_repository)
-thread_pool = ThreadPoolExecutor(max_workers=int(os.getenv('MAX_CURRENT_WORKER', 1)))# worker的数量已经在线程池中完成了配置
+thread_pool = ThreadPoolExecutor(max_workers=int(os.getenv('MAX_CURRENT_WORKER', 1)))
+
 patch_batchanalyze_output_to_markdown()
 
