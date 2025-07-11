@@ -11,9 +11,7 @@ from loguru import logger
 from startup import task_repository, pdf_processor, thread_pool
 from data.model import Task
 from processor.pdf_processor import PDFProcessor
-from utils.selectGPU import GPUPool
 
-gpu_pool = GPUPool()
 
 async def process_pdf_task(
     task_to_add: Task,

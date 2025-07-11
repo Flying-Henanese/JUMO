@@ -31,7 +31,8 @@ class PDFProcessor:
         self.task_repository = task_repository
 
     @log_with_time_consumption(level="INFO")
-    @with_gpu_selection
+    # 默认CUDA设备，不再使用选择gpu的逻辑
+    # @with_gpu_selection
     def _sync_process_pdf(self, current_task: Task):
         try:
             extension = os.path.splitext(current_task.object_key)[-1].lower()
