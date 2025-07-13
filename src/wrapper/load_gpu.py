@@ -1,6 +1,6 @@
-import mineru.utils.config_reader as config_reader
 from utils.selectGPU import GPUPool
 from loguru import logger
+from const.devices_enums import DeviceType
 
 def custom_get_device():
     gpu_pool = GPUPool()

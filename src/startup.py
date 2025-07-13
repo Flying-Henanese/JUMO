@@ -14,10 +14,12 @@ from dotenv import load_dotenv
 from utils.logging import setup_logger
 from data.operation import TaskRepository
 from utils.minio_tool import MinioConnection
-from processor.pdf_processor import PDFProcessor
 from concurrent.futures import ThreadPoolExecutor
-from wrapper.load_gpu import custom_get_device
-import mineru.utils.config_reader as config_reader
+# get_device 失控了以后再考虑
+# from wrapper.load_gpu import custom_get_device
+# import mineru.utils.config_reader as config_reader
+# config_reader.get_device = custom_get_device
+from processor.pdf_processor import PDFProcessor
 from processor.converters.table_to_markdown import patch_batchanalyze_output_to_markdown    
 
 # 新版的mineru好像已经不在需要配置文件了
@@ -26,7 +28,8 @@ from processor.converters.table_to_markdown import patch_batchanalyze_output_to_
 os.environ['MINERU_MODEL_SOURCE'] = 'modelscope'
 # os.environ['MINERU_MODEL_CACHE'] = '~/.cache/modelscope/hub'
 os.environ['MINERU_CONFIG_DIR'] = './config/'
-os.environ['MINERU_DEVICE_MODE'] = 'mps'
+os.environ['MINERU_DEVICE_MODE'] = 'mps:0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 # "MINERU_MAX_CONCURRENT_TASKS": None,
 # 加载配置项
 load_dotenv()
@@ -36,8 +39,6 @@ setup_logger()
 task_repository = TaskRepository()
 minio_tool = MinioConnection()
 pdf_processor = PDFProcessor(minio_tool=minio_tool, task_repository=task_repository)
-thread_pool = ThreadPoolExecutor(max_workers=int(os.getenv('MAX_CURRENT_WORKER', 8)))
-# 应用monkey patch
-config_reader.get_device = custom_get_device
+thread_pool = ThreadPoolExecutor(max_workers=int(os.getenv('MAX_CURRENT_WORKER', 1)))
 
 patch_batchanalyze_output_to_markdown()
