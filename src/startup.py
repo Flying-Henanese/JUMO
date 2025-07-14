@@ -28,8 +28,8 @@ from processor.converters.table_to_markdown import patch_batchanalyze_output_to_
 os.environ['MINERU_MODEL_SOURCE'] = 'modelscope'
 # os.environ['MINERU_MODEL_CACHE'] = '~/.cache/modelscope/hub'
 os.environ['MINERU_CONFIG_DIR'] = './config/'
-os.environ['MINERU_DEVICE_MODE'] = 'mps:0'
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['MINERU_DEVICE_MODE'] = 'npu:0'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 # "MINERU_MAX_CONCURRENT_TASKS": None,
 # 加载配置项
 load_dotenv()

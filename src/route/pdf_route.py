@@ -117,7 +117,7 @@ async def upload_and_analyze_pdf(
         task_id = generate_short_uuid()
         
         # 上传文件到MinIO
-        bucket_name = "uploads"  # 可以配置为常量
+        bucket_name = "xt0109"  # 可以配置为常量
         object_name = f"{task_id}/{file.filename}"
         # 读取文件内容为字节流
         file_content = await file.read()
