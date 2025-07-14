@@ -29,6 +29,18 @@ class PDFProcessor:
     def __init__(self, minio_tool: MinioConnection, task_repository: TaskRepository):
         self.minio_tool = minio_tool
         self.task_repository = task_repository
+    
+    def clean_model_list(self,model_list):
+        for page in model_list:
+            for block in page.get("blocks", []):
+                for line in block.get("lines", []):
+                    cleaned_spans = []
+                    for span in line.get("spans", []):
+                        # 保留有 'content' 的 span 或类型是 'text'
+                        if "content" in span or span.get("type") == "text":
+                            cleaned_spans.append(span)
+                    line["spans"] = cleaned_spans
+        return model_list
 
     @log_with_time_consumption(level="INFO")
     # @with_gpu_selection
@@ -80,6 +92,7 @@ class PDFProcessor:
                 images = all_image_lists[0]
                 pdf_doc = all_pdf_docs[0]
                 ocr_enabled = ocr_enabled_list[0]
+                model_list = self.clean_model_list(model_list)
 
                 local_image_dir, local_md_dir = prepare_env(output_dir, file_name, "auto")
                 image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
@@ -140,7 +153,7 @@ class PDFProcessor:
                 )
 
                 # middle_json 内容
-                middle_json_content = json.dumps(middle_json, ensure_ascii=False, indent=4).encode("utf-8","surrogatepass").decode("utf-16","ignore")
+                middle_json_content = json.dumps(middle_json, ensure_ascii=False, indent=4).encode("utf-8","surrogatepass").decode("utf-8","ignore")
                 self.minio_tool.upload_file_by_bytes(
                     bucket_name=current_task.output_bucket,
                     object_name=f"{current_task.task_id}/{name_without_ext}_middle.json",
