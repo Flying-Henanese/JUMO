@@ -31,19 +31,18 @@ class PDFProcessor:
         self.task_repository = task_repository
     
     def _clean_model_list(self, model_list):
-        for page in model_list:
-            for block in page.get("blocks", []):
-                for line in block.get("lines", []):
+        for page_index, page in enumerate(model_list):
+            for block_index, block in enumerate(page.get("blocks", [])):
+                for line_index, line in enumerate(block.get("lines", [])):
                     cleaned_spans = []
-                    for span in line.get("spans", []):
-                        if not isinstance(span, dict):
-                            continue  # 跳过非法 span
-                        span_type = span.get("type")
-                        if span_type == "text" and "content" in span:
+                    for span_index, span in enumerate(line.get("spans", [])):
+                        if isinstance(span, dict) and "content" in span:
                             cleaned_spans.append(span)
-                        # 可选：允许 image 公式块通过，但必须确保 downstream 可接受
-                        # elif span_type == "inline_equation" and "image_path" in span:
-                        #     cleaned_spans.append(span)
+                        else:
+                            logger.debug(
+                                f"Removed invalid span at page[{page_index}] block[{block_index}] "
+                                f"line[{line_index}] span[{span_index}]: {span}"
+                            )
                     line["spans"] = cleaned_spans
         return model_list
 
