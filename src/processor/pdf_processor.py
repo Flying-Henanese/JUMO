@@ -30,15 +30,20 @@ class PDFProcessor:
         self.minio_tool = minio_tool
         self.task_repository = task_repository
     
-    def clean_model_list(self,model_list):
+    def _clean_model_list(self, model_list):
         for page in model_list:
             for block in page.get("blocks", []):
                 for line in block.get("lines", []):
                     cleaned_spans = []
                     for span in line.get("spans", []):
-                        # 保留有 'content' 的 span 或类型是 'text'
-                        if "content" in span or span.get("type") == "text":
+                        if not isinstance(span, dict):
+                            continue  # 跳过非法 span
+                        span_type = span.get("type")
+                        if span_type == "text" and "content" in span:
                             cleaned_spans.append(span)
+                        # 可选：允许 image 公式块通过，但必须确保 downstream 可接受
+                        # elif span_type == "inline_equation" and "image_path" in span:
+                        #     cleaned_spans.append(span)
                     line["spans"] = cleaned_spans
         return model_list
 
@@ -92,7 +97,7 @@ class PDFProcessor:
                 images = all_image_lists[0]
                 pdf_doc = all_pdf_docs[0]
                 ocr_enabled = ocr_enabled_list[0]
-                model_list = self.clean_model_list(model_list)
+                model_list = self._clean_model_list(model_list)
 
                 local_image_dir, local_md_dir = prepare_env(output_dir, file_name, "auto")
                 image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
