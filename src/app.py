@@ -3,6 +3,7 @@ from loguru import logger
 import uvicorn
 from route.pdf_route import router as pdf_router
 from fastapi import FastAPI
+import startup
 
 app = FastAPI() # 启动服务
 app.include_router(pdf_router)
