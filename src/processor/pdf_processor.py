@@ -36,11 +36,16 @@ class PDFProcessor:
                 for line_index, line in enumerate(block.get("lines", [])):
                     cleaned_spans = []
                     for span_index, span in enumerate(line.get("spans", [])):
-                        if isinstance(span, dict) and "content" in span:
+                        if (
+                            isinstance(span, dict)
+                            and span.get("type") == "text"
+                            and "content" in span
+                            and isinstance(span["content"], str)
+                        ):
                             cleaned_spans.append(span)
                         else:
                             logger.debug(
-                                f"Removed invalid span at page[{page_index}] block[{block_index}] "
+                                f"Removing span without content at page[{page_index}] block[{block_index}] "
                                 f"line[{line_index}] span[{span_index}]: {span}"
                             )
                     line["spans"] = cleaned_spans
