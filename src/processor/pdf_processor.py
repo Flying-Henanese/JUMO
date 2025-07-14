@@ -30,6 +30,37 @@ class PDFProcessor:
         self.minio_tool = minio_tool
         self.task_repository = task_repository
 
+    def _clean_model_list(self, model_list):
+        for page_index, page in enumerate(model_list):
+            for block_index, block in enumerate(page.get("blocks", [])):
+                for line_index, line in enumerate(block.get("lines", [])):
+                    cleaned_spans = []
+                    for span_index, span in enumerate(line.get("spans", [])):
+                        if not isinstance(span, dict):
+                            logger.debug(f"Skipping non-dict span: {span}")
+                            continue
+
+                        span_type = span.get("type")
+
+                        if span_type == "text":
+                            if "content" in span and isinstance(span["content"], str):
+                                cleaned_spans.append(span)
+                            else:
+                                logger.debug(
+                                    f"Removing text span without content at "
+                                    f"page[{page_index}] block[{block_index}] line[{line_index}] span[{span_index}]: {span}"
+                                )
+                        elif span_type in ("inline_equation", "image") and "image_path" in span:
+                            cleaned_spans.append(span)
+                        else:
+                            logger.debug(
+                                f"Unknown or malformed span removed at "
+                                f"page[{page_index}] block[{block_index}] line[{line_index}] span[{span_index}]: {span}"
+                            )
+
+                    line["spans"] = cleaned_spans
+        return model_list
+
     @log_with_time_consumption(level="INFO")
     # 默认CUDA设备，不再使用选择gpu的逻辑
     # @with_gpu_selection
@@ -81,6 +112,7 @@ class PDFProcessor:
                 images = all_image_lists[0]
                 pdf_doc = all_pdf_docs[0]
                 ocr_enabled = ocr_enabled_list[0]
+                model_list = self._clean_model_list(model_list)
 
                 local_image_dir, local_md_dir = prepare_env(output_dir, file_name, "auto")
                 image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
