@@ -15,15 +15,11 @@ from utils.logging import setup_logger
 from data.operation import TaskRepository
 from utils.minio_tool import MinioConnection
 from concurrent.futures import ThreadPoolExecutor
-<<<<<<< HEAD
-from wrapper.merge_text import safe_merge_2_list_blocks,safe_merge_2_text_blocks
-=======
 # get_device 失控了以后再考虑
 # from wrapper.load_gpu import custom_get_device
 # import mineru.utils.config_reader as config_reader
 # config_reader.get_device = custom_get_device
 from wrapper.merge_text import safe_merge_2_list_blocks, safe_merge_2_text_blocks
->>>>>>> common-branch
 import mineru.backend.pipeline.para_split
 # 应用猴子补丁
 mineru.backend.pipeline.para_split.__merge_2_list_blocks = safe_merge_2_list_blocks
@@ -36,13 +32,8 @@ from processor.converters.table_to_markdown import patch_batchanalyze_output_to_
 os.environ['MINERU_MODEL_SOURCE'] = 'modelscope'
 # os.environ['MINERU_MODEL_CACHE'] = '~/.cache/modelscope/hub'
 os.environ['MINERU_CONFIG_DIR'] = './config/'
-<<<<<<< HEAD
 os.environ['MINERU_DEVICE_MODE'] = f'cuda:{os.getenv("DEFAULT_CUDA_DEVICE", "0")}'
 # os.environ['CUDA_VISIBLE_DEVICES'] = os.getenv('DEFAULT_CUDA_DEVICE', '0')
-=======
-os.environ['MINERU_DEVICE_MODE'] = 'npu:0'
-# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
->>>>>>> common-branch
 # "MINERU_MAX_CONCURRENT_TASKS": None,
 # 加载配置项
 load_dotenv()
