@@ -31,6 +31,7 @@ router = APIRouter()
 gpu_pool = GPUPool()
 MAX_WORKERS = int(os.getenv('MAX_WORKERS', 8))
 MAX_QUEUING_TASKS = int(os.getenv('MAX_QUEUING_TASKS', 20))
+UPLOAD_BUCKET = os.getenv('UPLOAD_BUCKET', 'uploads')
 
 @router.post("/analyze-pdf/")
 async def analyze_pdf(
@@ -117,7 +118,7 @@ async def upload_and_analyze_pdf(
         task_id = generate_short_uuid()
         
         # 上传文件到MinIO
-        bucket_name = "xt0109"  # 可以配置为常量
+        bucket_name = UPLOAD_BUCKET  # 可以配置为常量
         object_name = f"{task_id}/{file.filename}"
         # 读取文件内容为字节流
         file_content = await file.read()
