@@ -29,7 +29,7 @@ class PDFProcessor:
     def __init__(self, minio_tool: MinioConnection, task_repository: TaskRepository):
         self.minio_tool = minio_tool
         self.task_repository = task_repository
-
+    
     def _clean_model_list(self, model_list):
         for page_index, page in enumerate(model_list):
             for block_index, block in enumerate(page.get("blocks", [])):
@@ -60,7 +60,7 @@ class PDFProcessor:
 
                     line["spans"] = cleaned_spans
         return model_list
-
+        
     @log_with_time_consumption(level="INFO")
     # @with_gpu_selection
     def _sync_process_pdf(self, current_task: Task):
@@ -172,7 +172,7 @@ class PDFProcessor:
                 )
 
                 # middle_json 内容
-                middle_json_content = json.dumps(middle_json, ensure_ascii=False, indent=4).encode("utf-8","surrogatepass").decode("utf-16","ignore")
+                middle_json_content = json.dumps(middle_json, ensure_ascii=False, indent=4).encode("utf-8","surrogatepass").decode("utf-8","ignore")
                 self.minio_tool.upload_file_by_bytes(
                     bucket_name=current_task.output_bucket,
                     object_name=f"{current_task.task_id}/{name_without_ext}_middle.json",
