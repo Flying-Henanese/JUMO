@@ -14,10 +14,13 @@ from dotenv import load_dotenv
 from utils.logging import setup_logger
 from data.operation import TaskRepository
 from utils.minio_tool import MinioConnection
-from processor.pdf_processor import PDFProcessor
 from concurrent.futures import ThreadPoolExecutor
-from wrapper.load_gpu import custom_get_device
-import mineru.utils.config_reader as config_reader
+from wrapper.merge_text import safe_merge_2_list_blocks,safe_merge_2_text_blocks
+import mineru.backend.pipeline.para_split
+# 应用猴子补丁
+mineru.backend.pipeline.para_split.__merge_2_list_blocks = safe_merge_2_list_blocks
+mineru.backend.pipeline.para_split.__merge_2_text_blocks = safe_merge_2_text_blocks
+from processor.pdf_processor import PDFProcessor
 from processor.converters.table_to_markdown import patch_batchanalyze_output_to_markdown    
 
 # 新版的mineru好像已经不在需要配置文件了
@@ -38,7 +41,5 @@ task_repository = TaskRepository()
 minio_tool = MinioConnection()
 pdf_processor = PDFProcessor(minio_tool=minio_tool, task_repository=task_repository)
 thread_pool = ThreadPoolExecutor(max_workers=int(os.getenv('MAX_CURRENT_WORKER', 1)))
-# 应用monkey patch
-config_reader.get_device = custom_get_device
 
 patch_batchanalyze_output_to_markdown()
