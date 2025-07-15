@@ -1,5 +1,6 @@
 # 所有的依赖和配置项都在startup里面配置好
 from loguru import logger
+from startup import *
 import uvicorn
 from route.pdf_route import router as pdf_router
 from fastapi import FastAPI

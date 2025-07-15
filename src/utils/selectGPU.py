@@ -142,8 +142,9 @@ class GPUPool:
         elif self.available_gpus[0].free_mem < self.min_free_mem:
             logger.warning(f'显存不足，当前最优GPU显存利用率为{self.available_gpus[0].utilization}%')
             return None # 没有充足的显存运行任务
-        logger.info(f'选择:{self.available_gpus[0].device_type}-{self.available_gpus[0]} 执行任务')
-        return self.available_gpus[0] 
+        best_gpu = self.available_gpus.pop(0)  # 获取并移除第一个元素
+        logger.info(f'选择:{best_gpu.device_type}-{best_gpu} 执行任务')
+        return best_gpu
     
     def get_available_gpus(self) -> List[GPUInfo]:
         """获取所有符合条件的GPU列表"""
