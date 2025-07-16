@@ -33,7 +33,7 @@ MAX_WORKERS = int(os.getenv('MAX_WORKERS', 8))
 MAX_QUEUING_TASKS = int(os.getenv('MAX_QUEUING_TASKS', 20))
 UPLOAD_BUCKET = os.getenv('UPLOAD_BUCKET', 'uploads')
 
-@router.post("/analyze-pdf/")
+@router.post("/analyze-pdf")
 async def analyze_pdf(
     pdf_path: str, 
     background_tasks: BackgroundTasks, 
@@ -97,7 +97,7 @@ async def analyze_pdf(
         raise HTTPException(status_code=429, detail=str(e))
 
 
-@router.post("/upload-and-analyze-pdf/")
+@router.post("/upload-and-analyze-pdf")
 async def upload_and_analyze_pdf(
     background_tasks: BackgroundTasks,
     output_bucket: str,
