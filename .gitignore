@@ -4,3 +4,4 @@ logs/
 *.pyc
 .vscode/
 database/mineru
+backup/
