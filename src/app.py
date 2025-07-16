@@ -5,7 +5,7 @@ import uvicorn
 from route.pdf_route import router as pdf_router
 from fastapi import FastAPI
 
-app = FastAPI() # 启动服务
+app = FastAPI(docs_url=None, redoc_url=None) # 启动服务
 app.include_router(pdf_router)
 
 if __name__ == "__main__":
