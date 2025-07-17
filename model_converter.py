@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import torch
 from torch.serialization import add_safe_globals
+from torch.nn.modules.container import Sequential
 import importlib
 
 def get_class_from_string(class_path):
@@ -28,7 +29,8 @@ def convert_to_zip(input_path: str, output_path: str = None, delete_original: bo
         from ultralytics.nn.tasks import DetectionModel
         torch.serialization.add_safe_globals([
             dill._dill._load_type,
-            DetectionModel
+            DetectionModel,
+            Sequential
         ])
         with open(input_path, 'rb') as f:
             model_data = torch.load(f, map_location="cpu", weights_only=True)
