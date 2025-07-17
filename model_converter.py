@@ -6,6 +6,7 @@ from torch.serialization import add_safe_globals
 from torch.nn.modules.container import Sequential
 from doclayout_yolo.nn.modules.conv import Conv as DConv
 from ultralytics.nn.modules.conv import Conv as UConv
+from torch.nn.modules.conv import Conv2d
 import importlib
 
 def get_class_from_string(class_path):
@@ -35,6 +36,7 @@ def convert_to_zip(input_path: str, output_path: str = None, delete_original: bo
             Sequential,
             DConv,
             UConv,
+            Conv2d
         ])
         with open(input_path, 'rb') as f:
             model_data = torch.load(f, map_location="cpu", weights_only=True)
