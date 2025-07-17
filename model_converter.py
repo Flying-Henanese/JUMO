@@ -2,49 +2,46 @@ import argparse
 import os
 from pathlib import Path
 import torch
-from torch.serialization import add_safe_globals
-from torch.nn.modules.container import Sequential
-from doclayout_yolo.nn.modules.conv import Conv as DConv
-from ultralytics.nn.modules.conv import Conv as UConv
-from torch.nn.modules.conv import Conv2d
 import importlib
+import dill  # 用于注册 _load_type
 
-def get_class_from_string(class_path):
-    """通过字符串路径动态导入类"""
-    module_path, class_name = class_path.rsplit('.', 1)
-    module = importlib.import_module(module_path)
-    return getattr(module, class_name)
-
-# 动态导入需要允许的类
-try:
-    YOLOv10DetectionModel = get_class_from_string("doclayout_yolo.nn.tasks.YOLOv10DetectionModel")
-    add_safe_globals([YOLOv10DetectionModel])
-except Exception as e:
-    print(f"⚠️ 安全全局类注册警告: {str(e)}")
+def register_safe_globals_from_checkpoint(input_path: str):
+    """自动注册 PyTorch 权重文件中使用的所有自定义全局类/函数"""
+    try:
+        unsafe = torch.serialization.get_unsafe_globals_in_checkpoint(input_path)
+        registered = []
+        for path in unsafe:
+            try:
+                module_name, _, class_name = path.rpartition('.')
+                module = importlib.import_module(module_name)
+                obj = getattr(module, class_name)
+                registered.append(obj)
+            except Exception as e:
+                print(f"⚠️ 无法导入 {path}: {e}")
+        # 加上基本类型
+        registered.append(dill._dill._load_type)
+        torch.serialization.add_safe_globals(registered)
+    except Exception as e:
+        print(f"⚠️ 注册安全全局失败: {e}")
 
 def convert_to_zip(input_path: str, output_path: str = None, delete_original: bool = False):
     if not os.path.exists(input_path):
-        raise FileNotFoundError(...)
+        raise FileNotFoundError(f"输入文件不存在: {input_path}")
+    
     output_path = output_path or str(Path(input_path).with_suffix('.zip'))
+    
     try:
-        # 注册安全全局
-        import dill
-        from ultralytics.nn.tasks import DetectionModel
-        torch.serialization.add_safe_globals([
-            dill._dill._load_type,
-            DetectionModel,
-            Sequential,
-            DConv,
-            UConv,
-            Conv2d
-        ])
+        register_safe_globals_from_checkpoint(input_path)
+        
         with open(input_path, 'rb') as f:
             model_data = torch.load(f, map_location="cpu", weights_only=True)
+
         torch.save(model_data, output_path, _use_new_zipfile_serialization=True)
-        print(...)
+        print(f"✅ 转换完成: {input_path} -> {output_path}")
+        
         if delete_original and os.path.exists(output_path):
             os.remove(input_path)
-            print(...)
+            print(f"🗑️ 已删除原始文件: {input_path}")
     except Exception as e:
         print(f"❌ 转换失败 {input_path}: {str(e)}")
 
