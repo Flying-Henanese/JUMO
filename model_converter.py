@@ -4,6 +4,7 @@ from pathlib import Path
 import torch
 import importlib
 import dill  # 用于注册 _load_type
+import numpy as np  # 别忘了加这个 import
 
 def register_safe_globals_from_checkpoint(input_path: str):
     """自动注册 PyTorch 权重文件中使用的所有自定义全局类/函数"""
@@ -34,9 +35,14 @@ def convert_to_zip(input_path: str, output_path: str = None, delete_original: bo
         register_safe_globals_from_checkpoint(input_path)
         
         with open(input_path, 'rb') as f:
-            model_data = torch.load(f, map_location="cpu", weights_only=True)
+            checkpoint = torch.load(f, map_location="cpu", weights_only=False)
 
-        torch.save(model_data, output_path, _use_new_zipfile_serialization=True)
+        # 自动处理 numpy.float64 类型的 my_scalar
+        if 'my_scalar' in checkpoint and isinstance(checkpoint['my_scalar'], np.float64):
+            checkpoint['my_scalar'] = torch.tensor(checkpoint['my_scalar'])
+            print(f"🔧 已转换 my_scalar 为 torch.tensor")
+
+        torch.save(checkpoint, output_path, _use_new_zipfile_serialization=True)
         print(f"✅ 转换完成: {input_path} -> {output_path}")
         
         if delete_original and os.path.exists(output_path):
