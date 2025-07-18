@@ -1,102 +1,109 @@
-import argparse
-import os
-import subprocess
+#!/usr/bin/env python3
+# convert_pt_zip_merge.py
+"""
+将目录下所有 .pt 模型转为 PyTorch ZIP-serialization：
+  --mode zip      ➜ 生成 .zip（可选删 .pt）
+  --mode inplace  ➜ 直接覆盖 .pt 为 ZIP 格式
+  --mode link     ➜ 生成 .zip 并创建 .pt → .zip 软链接
+转换后自动验证 torch.load 能正确读取。
+"""
+import argparse, os, subprocess, importlib, dill, torch, numpy as np
 from pathlib import Path
-import torch
-import importlib
-import dill
-import numpy as np
+from shutil import move
 
 def is_zip_file(path: str) -> bool:
-    """判断是否为 zip 格式模型"""
     try:
         out = subprocess.check_output(["file", "-b", path]).decode()
         return "Zip archive data" in out
     except Exception:
         return False
 
-def register_safe_globals_from_checkpoint(input_path: str):
-    """自动注册 PyTorch 权重文件中使用的自定义类"""
+def register_safe_globals_in_checkpoint(pt):
     try:
-        unsafe = torch.serialization.get_unsafe_globals_in_checkpoint(input_path)
-        registered = []
-        for path in unsafe:
-            try:
-                module_name, _, class_name = path.rpartition('.')
-                module = importlib.import_module(module_name)
-                obj = getattr(module, class_name)
-                registered.append(obj)
-            except Exception as e:
-                print(f"⚠️ 无法导入 {path}: {e}")
-        registered.append(dill._dill._load_type)
-        torch.serialization.add_safe_globals(registered)
+        unsafe = torch.serialization.get_unsafe_globals_in_checkpoint(pt)
+        torch.serialization.add_safe_globals(
+            [getattr(importlib.import_module(m), c)
+             for x in unsafe
+             for m, _, c in [x.rpartition('.')]
+             if m and c] + [dill._dill._load_type])
     except Exception as e:
-        print(f"⚠️ 注册 safe globals 失败: {e}")
+        print(f"⚠️ safe_globals 注册失败: {e}")
 
-def convert_to_zip(input_path: str, output_path: str = None, delete_original: bool = False, link_pt: bool = False):
-    if not os.path.exists(input_path):
-        raise FileNotFoundError(f"输入文件不存在: {input_path}")
-    
-    # 已经是 zip 格式就跳过
-    if is_zip_file(input_path):
-        print(f"✅ 已是 zip 格式，跳过: {input_path}")
+def save_as_zip(checkpoint, out_path):
+    torch.save(checkpoint, out_path, _use_new_zipfile_serialization=True)
+    if not is_zip_file(out_path):
+        raise RuntimeError("保存后仍不是 zip 格式")
+
+def validate_loadable(pt_path):
+    try:
+        torch.serialization._is_zipfile(pt_path)  # 额外判定
+        _ = torch.load(pt_path, map_location="cpu", weights_only=False)
+        return True
+    except Exception as e:
+        print(f"❌ 验证加载失败: {pt_path}\n{e}")
+        return False
+
+def convert_one(pt_path, mode="zip", delete_original=False):
+    pt = Path(pt_path)
+    if not pt.exists():
+        print(f"❌ 文件不存在: {pt}")
+        return
+    if is_zip_file(pt):
+        print(f"✅ 已为 zip 格式: {pt}")
         return
 
-    input_path = Path(input_path)
-    output_path = Path(output_path or input_path.with_suffix(".zip"))
+    register_safe_globals_in_checkpoint(str(pt))
 
-    try:
-        register_safe_globals_from_checkpoint(str(input_path))
-        
-        with open(input_path, 'rb') as f:
-            checkpoint = torch.load(f, map_location="cpu", weights_only=False)
+    with open(pt, "rb") as f:
+        ckpt = torch.load(f, map_location="cpu", weights_only=False)
 
-        # 可选转换 numpy.float64 → tensor
-        if isinstance(checkpoint, dict):
-            for key, val in checkpoint.items():
-                if isinstance(val, np.floating):
-                    checkpoint[key] = torch.tensor(val)
-                    print(f"🔧 已转换 {key} 为 torch.tensor")
+    # 修正 numpy scalar
+    if isinstance(ckpt, dict):
+        for k, v in list(ckpt.items()):
+            if isinstance(v, np.floating):
+                ckpt[k] = torch.tensor(v)
 
-        # 用 zip 格式保存
-        torch.save(checkpoint, output_path, _use_new_zipfile_serialization=True)
+    if mode == "inplace":
+        tmp = pt.with_suffix(".pt.tmp")
+        save_as_zip(ckpt, tmp)
+        if validate_loadable(tmp):
+            move(tmp, pt)
+            print(f"🎉 覆盖完成: {pt}")
+        else:
+            tmp.unlink(missing_ok=True)
+            print("⚠️ 覆盖回滚")
+        return
 
-        if not is_zip_file(output_path):
-            raise RuntimeError(f"{output_path} 保存失败，格式仍非 zip！")
+    # modes zip / link
+    zf = pt.with_suffix(".zip")
+    save_as_zip(ckpt, zf)
+    if not validate_loadable(zf):
+        zf.unlink(missing_ok=True)
+        return
+    print(f"🎉 转换完成: {pt} → {zf}")
 
-        print(f"✅ 转换完成: {input_path} → {output_path}")
+    if mode == "link":
+        pt.unlink(missing_ok=True)
+        pt.symlink_to(zf.name)
+        print(f"🔗 建立软链: {pt} → {zf.name}")
+    elif delete_original:
+        pt.unlink(missing_ok=True)
+        print(f"🗑️ 删除原始 .pt: {pt}")
 
-        # 创建软链接 .pt → .zip
-        if link_pt:
-            if input_path.exists():
-                input_path.unlink()
-            input_path.symlink_to(output_path.name)
-            print(f"🔗 已创建软链接: {input_path} → {output_path.name}")
-        
-        # 删除原始文件（不删软链接）
-        if delete_original and not link_pt and input_path.exists():
-            input_path.unlink()
-            print(f"🗑️ 已删除原始文件: {input_path}")
-
-    except Exception as e:
-        print(f"❌ 转换失败 {input_path}: {e}")
-
-def find_and_convert_pt_files(directory: str, delete_original: bool = False, link_pt: bool = False):
-    if not os.path.isdir(directory):
-        raise NotADirectoryError(f"目录不存在: {directory}")
-    
-    for root, _, files in os.walk(directory):
-        for file in files:
-            if file.endswith(".pt"):
-                pt_path = os.path.join(root, file)
-                convert_to_zip(pt_path, delete_original=delete_original, link_pt=link_pt)
+def batch_convert(root, mode="zip", delete=False):
+    root = Path(root).expanduser()
+    if not root.is_dir():
+        raise SystemExit(f"❌ 目录不存在: {root}")
+    for p in root.rglob("*.pt"):
+        convert_one(p, mode=mode, delete_original=delete)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dir", required=True, help="目录路径")
-    parser.add_argument("--delete", action="store_true", help="转换后删除原文件")
-    parser.add_argument("--link-pt", action="store_true", help="转换后为 zip 文件创建 .pt 软链接")
-    args = parser.parse_args()
-
-    find_and_convert_pt_files(args.dir, delete_original=args.delete, link_pt=args.link_pt)
-    print("🎉 全部转换完成！")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--dir", required=True, help="模型根目录")
+    ap.add_argument("--mode", choices=["zip", "inplace", "link"], default="zip",
+                    help="zip=生成.zip; inplace=覆盖.pt; link=软链.pt→.zip")
+    ap.add_argument("--delete", action="store_true",
+                    help="zip 模式下删除原 .pt 文件")
+    args = ap.parse_args()
+    batch_convert(args.dir, mode=args.mode, delete=args.delete)
+    print("✅ 全部处理完毕")
