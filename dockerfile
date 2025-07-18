@@ -1,4 +1,3 @@
-
 # 如果使用NVIDIA的GPU环境，则换成使用这个镜像
 FROM nvidia/cuda:12.2.0-base-ubuntu22.04
 #在ubuntu基础上安装Python 3.12
@@ -10,6 +9,14 @@ RUN apt-get update && apt-get install -y python3.12 python3-pip libreoffice
 
 # 安装Poetry
 RUN pip install --no-cache-dir poetry
+# 安装中文支持，解决libre office中遇到的转换中文内容的问题
+RUN sudo apt update && \
+    sudo apt install -y language-pack-zh-hans \
+                       fonts-wqy-microhei \
+                       fonts-wqy-zenhei \
+                       libreoffice-l10n-zh-cn && \
+    sudo update-locale LANG=zh_CN.UTF-8 && \
+    sudo apt clean
 
 # 设置工作目录
 WORKDIR /app
