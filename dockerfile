@@ -31,6 +31,7 @@ COPY pyproject.toml poetry.lock ./
 # 安装项目依赖
 RUN poetry install --no-dev --no-interaction --no-ansi
 
+
 # 复制其余项目文件
 COPY . .
 
