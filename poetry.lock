@@ -7826,4 +7826,8 @@ reference = "tsinghua"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
+<<<<<<< HEAD
 content-hash = "0a7ee8996c7744cbf4773ca81dc27938687cdacc6f599fec2fb79199756fc803"
+=======
+content-hash = "0a6761196a114df0737b8c4b785ff3280eabf7dc1071a1de8bef62cc796131d0"
+>>>>>>> 2bcbf43 (chore: resolve merge conflict in poetry.lock)
