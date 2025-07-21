@@ -1,7 +1,9 @@
 mineru-venv/
+.venv/
 models/
 logs/
 *.pyc
 .vscode/
 database/mineru
 backup/
+kernel_meta/
