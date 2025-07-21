@@ -7954,8 +7954,4 @@ reference = "huawei"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-<<<<<<< HEAD
 content-hash = "0a6761196a114df0737b8c4b785ff3280eabf7dc1071a1de8bef62cc796131d0"
-=======
-content-hash = "a25af23796f062800d94e83a5733b59bdc46584e0f52bc76f05747bbe9bbfc7c"
->>>>>>> common-branch
