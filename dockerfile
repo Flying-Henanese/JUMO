@@ -9,6 +9,14 @@ FROM python:3.12-slim
 
 # 安装Poetry
 RUN pip install --no-cache-dir poetry
+# 安装中文支持，解决libre office中遇到的转换中文内容的问题
+RUN sudo apt update && \
+    sudo apt install -y language-pack-zh-hans \
+                       fonts-wqy-microhei \
+                       fonts-wqy-zenhei \
+                       libreoffice-l10n-zh-cn && \
+    sudo update-locale LANG=zh_CN.UTF-8 && \
+    sudo apt clean
 
 # 设置工作目录
 WORKDIR /app
@@ -22,6 +30,7 @@ COPY pyproject.toml poetry.lock ./
 
 # 安装项目依赖
 RUN poetry install --no-dev --no-interaction --no-ansi
+
 
 # 复制其余项目文件
 COPY . .
