@@ -41,6 +41,7 @@ async def analyze_pdf(
     output_bucket: str,
     ocr_enabled: bool = False,
     table_enabled: bool = False,
+    formula_enabled: bool = False,
     ocr_lang: OCRLanguage = OCRLanguage.get_default().value
 ):
     """
@@ -61,6 +62,7 @@ async def analyze_pdf(
             output_bucket=output_bucket,
             ocr_enabled=ocr_enabled,
             table_enabled=table_enabled,
+            formula_enabled=formula_enabled,
             ocr_lang=ocr_lang.value,
             output_info='',
             create_time=datetime.now(),
@@ -104,6 +106,7 @@ async def upload_and_analyze_pdf(
     file: UploadFile = File(...),
     ocr_enabled: bool = False,
     table_enabled: bool = False,
+    formula_enabled: bool = False,
     ocr_lang: OCRLanguage = OCRLanguage.get_default().value
 ):
     """
@@ -140,6 +143,7 @@ async def upload_and_analyze_pdf(
             output_bucket=output_bucket,
             ocr_enabled=ocr_enabled,
             table_enabled=table_enabled,
+            formula_enabled=formula_enabled,
             ocr_lang=ocr_lang.value,
             output_info='',
             create_time=datetime.now(),
