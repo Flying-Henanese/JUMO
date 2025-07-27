@@ -19,6 +19,10 @@ from concurrent.futures import ThreadPoolExecutor
 # from wrapper.load_gpu import custom_get_device
 # import mineru.utils.config_reader as config_reader
 # config_reader.get_device = custom_get_device
+from wrapper.pdf_boost_patch import load_images_from_pdf as custom_load_images_from_pdf
+import mineru.utils.pdf_image_tools
+mineru.utils.pdf_image_tools.load_images_from_pdf = custom_load_images_from_pdf
+
 from processor.pdf_processor import PDFProcessor
 from processor.converters.table_to_markdown import patch_batchanalyze_output_to_markdown    
 
@@ -42,3 +46,4 @@ pdf_processor = PDFProcessor(minio_tool=minio_tool, task_repository=task_reposit
 thread_pool = ThreadPoolExecutor(max_workers=int(os.getenv('MAX_CURRENT_WORKER', 1)))
 
 patch_batchanalyze_output_to_markdown()
+
