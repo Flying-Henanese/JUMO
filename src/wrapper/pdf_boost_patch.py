@@ -25,7 +25,7 @@ class GlobalProcessPool:
     
     def __init__(self):
         if not self._initialized:
-            ctx = mp.get_context('fork')
+            ctx = mp.get_context('spawn')
             max_workers = max(2, CONCURRENCY)  # 增加工作进程数
             self.executor = ProcessPoolExecutor(mp_context=ctx, max_workers=max_workers)
             # self.executor = ctx.ProcessPoolExecutor(max_workers=max_workers)
