@@ -51,4 +51,14 @@ pdf_processor = PDFProcessor(minio_tool=minio_tool, task_repository=task_reposit
 thread_pool = ThreadPoolExecutor(max_workers=int(os.getenv('MAX_CURRENT_WORKER', 1)))
 
 patch_batchanalyze_output_to_markdown()
+# 执行mineru-vlm的预热
+from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 
+vlm_doc_analyze(
+    b"",  # 空 PDF bytes
+    image_writer=None,
+    backend="sglang-engine",
+    formula_enable=False,
+    table_enable=False,
+    lang="ch"
+)
