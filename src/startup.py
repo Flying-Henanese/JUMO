@@ -15,6 +15,7 @@ from utils.logging import setup_logger
 from data.operation import TaskRepository
 from utils.minio_tool import MinioConnection
 from concurrent.futures import ThreadPoolExecutor
+from utils.workers_threading_pool import ThreadPoolSingleton
 # get_device 失控了以后再考虑
 # from wrapper.load_gpu import custom_get_device
 # import mineru.utils.config_reader as config_reader
@@ -50,6 +51,6 @@ task_repository = TaskRepository()
 minio_tool = MinioConnection()
 pdf_processor = PDFProcessor(minio_tool=minio_tool, task_repository=task_repository)
 thread_pool = ThreadPoolExecutor(max_workers=int(os.getenv('MAX_CURRENT_WORKER', 1)))
-
+worker_thread_pool = ThreadPoolSingleton() # worker的数量已经在线程池中完成了配置
 patch_batchanalyze_output_to_markdown()
 

@@ -1,6 +1,8 @@
 # 所有的依赖和配置项都在startup里面配置好
 
 if __name__ == "__main__":
+    # 把依赖的配置项放在这里的目的
+    # 就是防止新创建的子进程重复加载配置项
     from loguru import logger
     from startup import *
     import uvicorn
