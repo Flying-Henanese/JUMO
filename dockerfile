@@ -17,6 +17,10 @@ RUN sudo apt update && \
                        libreoffice-l10n-zh-cn && \
     sudo update-locale LANG=zh_CN.UTF-8 && \
     sudo apt clean
+# 这里要添加一步安装RUST编译器
+# RUN apt-get update && apt-get install -y rustc cargo
+# 还要安装OPENSSL开发库
+# RUN apt-get update && apt-get install -y libssl-dev pkg-config
 
 # 设置工作目录
 WORKDIR /app
