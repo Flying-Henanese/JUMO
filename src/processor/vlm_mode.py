@@ -74,12 +74,11 @@ class PDFProcessor:
                 middle_json, infer_result = vlm_doc_analyze(                                     # ★
                     pdf_bytes,
                     image_writer=image_writer,      # 继续复用 FileBasedDataWriter
-                    backend="sglang-engine",        # ★ 关键切换点
+                    backend="sglang-engine"      # ★ 关键切换点
                     # 不需要 server_url
                     # lang=current_task.ocr_lang or "ch",
-                    formula_enable=current_task.formula_enabled,
-                    table_enable=current_task.table_enabled,
-                    parse_method="auto"
+                    # formula_enable=current_task.formula_enabled,
+                    # table_enable=current_task.table_enabled,
                 )
 
                 # 上传图片
