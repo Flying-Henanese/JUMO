@@ -29,7 +29,7 @@ import mineru.backend.pipeline.para_split
 mineru.backend.pipeline.para_split.__merge_2_list_blocks = safe_merge_2_list_blocks
 mineru.backend.pipeline.para_split.__merge_2_text_blocks = safe_merge_2_text_blocks
 
-from processor.pdf_processor import PDFProcessor
+from processor.vlm_mode import PDFProcessor
 from processor.converters.table_to_markdown import patch_batchanalyze_output_to_markdown    
 # 新版的mineru好像已经不在需要配置文件了
 # os.environ['MINERU_TOOLS_CONFIG_JSON'] = 'config/mineru.json'
