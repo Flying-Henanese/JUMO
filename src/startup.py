@@ -65,8 +65,5 @@ from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 vlm_doc_analyze(
     b"",  # 空 PDF bytes
     image_writer=None,
-    backend="sglang-engine",
-    formula_enable=False,
-    table_enable=False,
-    lang="ch"
+    backend="sglang-engine"
 )
