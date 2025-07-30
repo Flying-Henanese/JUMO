@@ -9,7 +9,7 @@ import tempfile
 from loguru import logger
 from regex import F  # 添加这行导入
 
-CONCURRENCY = mp.cpu_count()//2
+CONCURRENCY = min(mp.cpu_count()//4,8)
 # 全局进程池管理器
 class GlobalProcessPool:
     _instance = None
