@@ -21,7 +21,7 @@ class ThreadPoolSingleton(metaclass=_SingletonMeta):
             self._initialized = False
         if not self._initialized:
             # 线程数量不要太多，最多8个
-            self._max_workers = max_workers or min(os.cpu_count()//4, 8)
+            self._max_workers = max_workers or min(os.cpu_count()//2, 8)
             self._executor = ThreadPoolExecutor(max_workers=self._max_workers)
             self._initialized = True
             self._shutdown_lock = threading.Lock()

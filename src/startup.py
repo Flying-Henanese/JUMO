@@ -23,7 +23,9 @@ from utils.workers_threading_pool import ThreadPoolSingleton
 from wrapper.pdf_boost_patch import load_images_from_pdf as custom_load_images_from_pdf
 import mineru.utils.pdf_image_tools
 mineru.utils.pdf_image_tools.load_images_from_pdf = custom_load_images_from_pdf
-
+from wrapper.image_processing_boost import get_ocr_result_list_parallel
+import mineru.utils.ocr_utils
+mineru.utils.ocr_utils.get_ocr_result_list = get_ocr_result_list_parallel
 # 解决合并文本中缺失字段的问题
 from wrapper.merge_text import safe_merge_2_list_blocks, safe_merge_2_text_blocks
 import mineru.backend.pipeline.para_split
@@ -50,7 +52,6 @@ setup_logger()
 task_repository = TaskRepository()
 minio_tool = MinioConnection()
 pdf_processor = PDFProcessor(minio_tool=minio_tool, task_repository=task_repository)
-thread_pool = ThreadPoolExecutor(max_workers=int(os.getenv('MAX_CURRENT_WORKER', 1)))
-worker_thread_pool = ThreadPoolSingleton() # worker的数量已经在线程池中完成了配置
+thread_pool = ThreadPoolExecutor(max_workers=int(os.getenv('MAX_CURRENT_WORKER', 1)))# worker的数量已经在线程池中完成了配置
 patch_batchanalyze_output_to_markdown()
 
