@@ -67,7 +67,7 @@ from mineru.backend.vlm.predictor import get_predictor
 
 predictor = get_predictor(
     backend="sglang-engine",
-    model_path=None,        # 使用默认路径或你的自定义路径
+    model_path="",        # 使用默认路径或你的自定义路径
     server_url=None,
     max_new_tokens=32,      # 小量 token 以觸运行逻辑
     # 其他你通常传入的 kwargs
