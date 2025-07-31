@@ -40,7 +40,7 @@ os.environ['MINERU_MODEL_SOURCE'] = 'modelscope'
 # os.environ['MINERU_MODEL_CACHE'] = '~/.cache/modelscope/hub'
 os.environ['MINERU_CONFIG_DIR'] = './config/'
 os.environ['MINERU_DEVICE_MODE'] = f'cuda:{os.getenv("DEFAULT_CUDA_DEVICE", "0")}'
-# os.environ['CUDA_VISIBLE_DEVICES'] = os.getenv('DEFAULT_CUDA_DEVICE', '0')
+os.environ['CUDA_VISIBLE_DEVICES'] = '5'
 # "MINERU_MAX_CONCURRENT_TASKS": None,
 # 加载配置项
 load_dotenv()
