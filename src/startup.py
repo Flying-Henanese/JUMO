@@ -54,10 +54,21 @@ thread_pool = ThreadPoolExecutor(max_workers=int(os.getenv('MAX_CURRENT_WORKER',
 patch_batchanalyze_output_to_markdown()
 
 # 执行mineru-vlm的预热
-from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
+# from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 
-vlm_doc_analyze(
-    b"",  # 空 PDF bytes
-    image_writer=None,
-    backend="sglang-engine"
+# vlm_doc_analyze(
+#     b"",  # 空 PDF bytes
+#     image_writer=None,
+#     backend="sglang-engine"
+# )
+
+# 新的预热方式
+from mineru.backend.vlm.predictor import get_predictor
+
+predictor = get_predictor(
+    backend="sglang-engine",
+    model_path=None,        # 使用默认路径或你的自定义路径
+    server_url=None,
+    max_new_tokens=32,      # 小量 token 以觸运行逻辑
+    # 其他你通常传入的 kwargs
 )
