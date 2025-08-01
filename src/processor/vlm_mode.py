@@ -12,7 +12,7 @@ from minio.error import S3Error
 from mineru.cli.common import convert_pdf_bytes_to_bytes_by_pypdfium2, prepare_env
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.enum_class import MakeMode
-from processor.warmup.vlm_predictor_warmup import predictor
+# from processor.warmup.vlm_predictor_warmup import predictor
 from mineru.backend.vlm.vlm_analyze import doc_analyze
 from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
 

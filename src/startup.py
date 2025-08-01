@@ -32,6 +32,8 @@ mineru.backend.pipeline.para_split.__merge_2_list_blocks = safe_merge_2_list_blo
 mineru.backend.pipeline.para_split.__merge_2_text_blocks = safe_merge_2_text_blocks
 # 配置huggingface的地址
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
+# 新版的mineru好像已经不在需要配置文件了
+# os.environ['MINERU_TOOLS_CONFIG_JSON'] = 'config/mineru.json'
 # 从国内的modelscope下载模型，避免huggingface无法访问的问题
 os.environ['MINERU_MODEL_SOURCE'] = 'modelscope'
 os.environ['MINERU_CONFIG_DIR'] = './config/'
@@ -52,13 +54,4 @@ minio_tool = MinioConnection()
 pdf_processor = PDFProcessor(minio_tool=minio_tool, task_repository=task_repository)
 thread_pool = ThreadPoolExecutor(max_workers=int(os.getenv('MAX_CURRENT_WORKER', 1)))# worker的数量已经在线程池中完成了配置
 patch_batchanalyze_output_to_markdown()
-
-# 执行mineru-vlm的预热
-# from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
-
-# vlm_doc_analyze(
-#     b"",  # 空 PDF bytes
-#     image_writer=None,
-#     backend="sglang-engine"
-# )
 
