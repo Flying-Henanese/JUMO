@@ -69,7 +69,7 @@ class PDFProcessor:
                 # 装饰器：自动选择可用 GPU，并设置 CUDA_VISIBLE_DEVICES
                 # pipeline_doc_analyze = with_gpu_selection(pipeline_doc_analyze)
                 
-                img_bytes_list = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, 0, None)
+                img_bytes_list = convert_pdf_bytes_to_bytes_by_pypdfium2(file_bytes, 0, None)
                 images_base64 = [base64.b64encode(img).decode('utf-8') for img in img_bytes_list]
                 
                 local_image_dir, local_md_dir = prepare_env(output_dir, file_name, "auto")
