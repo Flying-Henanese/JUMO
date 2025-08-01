@@ -3,7 +3,6 @@ import tempfile
 import json
 import datetime
 import io
-import base64
 
 from fastapi import HTTPException
 from loguru import logger
@@ -12,7 +11,6 @@ from minio.error import S3Error
 from mineru.cli.common import convert_pdf_bytes_to_bytes_by_pypdfium2, prepare_env
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.enum_class import MakeMode
-# from processor.warmup.vlm_predictor_warmup import predictor
 from mineru.backend.vlm.vlm_analyze import doc_analyze
 from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
 
@@ -65,19 +63,18 @@ class PDFProcessor:
                 images_list = []
 
                 # 截取页范围（可配置）
-                # pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(file_bytes, 0, None)
+                pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(file_bytes, 0, None)
                 # 装饰器：自动选择可用 GPU，并设置 CUDA_VISIBLE_DEVICES
                 # pipeline_doc_analyze = with_gpu_selection(pipeline_doc_analyze)
-                
-                img_bytes_list = convert_pdf_bytes_to_bytes_by_pypdfium2(file_bytes, 0, None)
-                images_base64 = [base64.b64encode(img).decode('utf-8') for img in img_bytes_list]
-                
+
                 local_image_dir, local_md_dir = prepare_env(output_dir, file_name, "auto")
                 image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
 
-                middle_json, infer_result = predictor.batch_predict(                                     # ★
-                    images_base64      # ★ 关键切换点
+                middle_json, infer_result = doc_analyze(                                     # ★
+                    pdf_bytes,
+                    image_writer=image_writer,      # 继续复用 FileBasedDataWriter
+                    backend="sglang-client"       # ★ 关键切换点
                 )
 
                 # 上传图片
