@@ -1,5 +1,4 @@
 from markdown_it import MarkdownIt
-from textwrap import wrap
 
 
 def split_text_with_overlap(text: str, max_length: int = 800, overlap: int = 50) -> list[str]:
@@ -16,6 +15,33 @@ def split_text_with_overlap(text: str, max_length: int = 800, overlap: int = 50)
         chunks.append(chunk.strip())
         start += max_length - overlap
     return chunks
+
+def split_paragraphs_with_overlap(text: str, max_length: int, overlap: int) -> list[str]:
+    """
+    根据段落优先的方式切分文本，长段落再用滑窗+重叠字符切分。
+    
+    :param text: 原始 Markdown 文本
+    :param max_length: 每段最大长度
+    :param overlap: 长段落之间的重叠字符数
+    :return: 分段结果列表
+    """
+    assert max_length > overlap, "max_length 必须大于 overlap"
+
+    paragraphs = [p.strip() for p in text.strip().split('\n\n') if p.strip()]
+    result = []
+
+    for para in paragraphs:
+        if len(para) <= max_length:
+            result.append(para)
+        else:
+            start = 0
+            while start < len(para):
+                end = min(start + max_length, len(para))
+                chunk = para[start:end].strip()
+                result.append(chunk)
+                start += max_length - overlap
+
+    return result
 
 def process_markdown(md_text: str, max_length: int = 800) -> str:
     """
@@ -70,7 +96,7 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
             # 处理普通的文本段落
             if len(content) > max_length:
                 # 如果段落长度超过了最大长度，则进行切分
-                chunks = split_text_with_overlap(content, max_length)
+                chunks = split_paragraphs_with_overlap(content, max_length)
                 for i, chunk in enumerate(chunks, 1):
                     header = f"{'#' * level} {title_path}|Part {i}" if title_path else f"Part {i}"
                     result.extend([header, chunk, "-" * 10])
