@@ -113,6 +113,7 @@ dependencies = [
     "beautifulsoup4 (>=4.13.4,<5.0.0)",
     "pybase64 (>=1.4.2,<2.0.0)",
     "sglang[all] (==0.4.8.post1)",
+    "markdown-it-py (>=3.0.0,<4.0.0)",
 ]
 
 

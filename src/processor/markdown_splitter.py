@@ -1,122 +1,162 @@
-import re
-from textwrap import wrap
+from markdown_it import MarkdownIt
 
-def process_markdown(md_text: str, max_length: int = 300) -> str:
 
+def split_text_with_overlap(text: str, max_length: int = 800, overlap: int = 50) -> list[str]:
     """
-    处理markdown文本，根据标题结构和内容长度进行分割。
+    将文本按 max_length 切分，每段之间有 overlap 个字符的重叠部分。
+    """
+    assert max_length > overlap, "max_length 必须大于 overlap"
+    
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = min(start + max_length, len(text))
+        chunk = text[start:end]
+        chunks.append(chunk.strip())
+        start += max_length - overlap
+    return chunks
+
+def split_paragraphs_with_overlap(text: str, max_length: int, overlap: int) -> list[str]:
+    """
+    根据段落优先的方式切分文本，长段落再用滑窗+重叠字符切分。
+    
+    :param text: 原始 Markdown 文本
+    :param max_length: 每段最大长度
+    :param overlap: 长段落之间的重叠字符数
+    :return: 分段结果列表
+    """
+    assert max_length > overlap, "max_length 必须大于 overlap"
+
+    paragraphs = [p.strip() for p in text.strip().split('\n\n') if p.strip()]
+    result = []
+
+    for para in paragraphs:
+        if len(para) <= max_length:
+            result.append(para)
+        else:
+            start = 0
+            while start < len(para):
+                end = min(start + max_length, len(para))
+                chunk = para[start:end].strip()
+                result.append(chunk)
+                start += max_length - overlap
+
+    return result
+
+def process_markdown(md_text: str, max_length: int = 800) -> str:
+    """
+    使用 markdown-it-py 处理markdown文本，根据标题结构和内容长度进行分割。
     表格作为不可分割的元素，会直接复制到结果中。
     
-    :param md_text: 输入的markdown文本（字符串格式）
-    :param max_length: 每个段落的最大长度，默认为300
+    :param md_text: 输入的markdown文本
+    :param max_length: 每段最大长度
     :return: 处理后的markdown文本
     """
 
-    # 初始化标题栈和结果列表
-    title_stack = [""] * 6  # h1-h6
+    md = MarkdownIt()
+    tokens = md.parse(md_text)
+
     result = []
     current_content = []
-    
-    # 预编译正则表达式
-    header_pattern = re.compile(r'^(#{1,6})\s*(.*?)\s*$', re.MULTILINE)
-    table_pattern = re.compile(
-        r'^(\|.+\|\n)(?:\|[\-:\|]+\n)((?:\|.+\|\n?)+)',
-        re.MULTILINE
-    )
-    
-    def get_clean_title_path():
-        """获取不带#的标题路径"""
+    title_stack = [""] * 6  # h1-h6
+
+    def get_title_path():
+        """
+        获取当前标题路径
+        """
         return '|'.join([t for t in title_stack if t])
-    
+
     def get_current_level():
-        """获取当前最低标题级别"""
+        """
+        获取当前标题层级
+        """
         for i in range(5, -1, -1):
             if title_stack[i]:
-                return i + 1  # 1-based
-        return 0
-    
+                return i + 1
+        return 1  # 默认最小一级
+
     def flush_content(is_table=False):
-        """处理当前累积的内容"""
+        """
+        检查是否还有待处理内容
+        """
         if not current_content:
             return
-            
-        content = '\n'.join(current_content)
-        if not content.strip():
+        content = '\n'.join(current_content).strip()
+        if not content:
             current_content.clear()
             return
-            
-        title_path = get_clean_title_path()
+
         level = get_current_level()
-        
+        title_path = get_title_path()
+        # 如果当前段落为表格，直接复制
         if is_table:
-            # 表格特殊处理（不分割）
-            header = f"{'#'*level} {title_path}|Table" if title_path else "Table"
+            header = f"{'#' * level} {title_path}|Table" if title_path else "Table"
             result.extend([header, content, "-" * 10])
         else:
-            # 普通文本处理
+            # 处理普通的文本段落
             if len(content) > max_length:
-                chunks = wrap(content, width=max_length)
+                # 如果段落长度超过了最大长度，则进行切分
+                chunks = split_paragraphs_with_overlap(content, max_length)
                 for i, chunk in enumerate(chunks, 1):
-                    header = f"{'#'*level} {title_path}|Part {i}" if title_path else f"Part {i}"
+                    header = f"{'#' * level} {title_path}|Part {i}" if title_path else f"Part {i}"
                     result.extend([header, chunk, "-" * 10])
             else:
-                header = f"{'#'*level} {title_path}" if title_path else ""
+                header = f"{'#' * level} {title_path}" if title_path else ""
                 if header:
                     result.append(header)
                 result.extend([content, "-" * 10])
-        
         current_content.clear()
-    
-    # 先提取表格
-    tables = []
-    def table_replacer(match):
-        tables.append((match.start(), match.end(), match.group(0)))
-        return f"\0TABLE{len(tables)-1}\0"
-    
-    md_text = table_pattern.sub(table_replacer, md_text)
-    
-    # 处理其他内容
-    lines = md_text.split('\n')
+
     i = 0
-    while i < len(lines):
-        line = lines[i]
-        
-        # 处理表格占位符
-        if "\0TABLE" in line:
-            table_id = int(re.search(r'\0TABLE(\d+)\0', line).group(1))
-            _, _, table_content = tables[table_id]
-            current_content.append(table_content)
+    while i < len(tokens):
+        token = tokens[i]
+
+        # 标题处理
+        if token.type == "heading_open":
+            flush_content()
+            level = int(token.tag[1])
+            inline_token = tokens[i + 1]
+            if inline_token.type == "inline":
+                title_stack[level - 1] = inline_token.content.strip()
+                for j in range(level, 6):
+                    title_stack[j] = ""
+            i += 3  # skip heading_open, inline, heading_close
+            continue
+
+        # 表格处理（整个复制）
+        elif token.type == "table_open":
+            flush_content()
+            table_lines = []
+            while i < len(tokens) and tokens[i].type != "table_close":
+                if tokens[i].type == "inline":
+                    table_lines.append(tokens[i].content)
+                i += 1
+            i += 1  # skip table_close
+            current_content.append('\n'.join(table_lines))
             flush_content(is_table=True)
+            continue
+
+        # 段落内容
+        elif token.type == "paragraph_open":
+            inline_token = tokens[i + 1]
+            if inline_token.type == "inline":
+                current_content.append(inline_token.content.strip())
+            i += 3  # paragraph_open, inline, paragraph_close
+            continue
+
+        # 代码块
+        elif token.type == "fence":
+            current_content.append(f"```\n{token.content}\n```")
             i += 1
             continue
-        
-        # 处理标题
-        header_match = header_pattern.match(line)
-        if header_match:
-            flush_content()
-            level = len(header_match.group(1))
-            title = header_match.group(2).strip()
-            title_stack[level-1] = title
-            # 清空下级标题
-            for j in range(level, 6):
-                title_stack[j] = ""
+
+        # 其他内容
+        else:
             i += 1
-            continue
-        
-        # 处理空行
-        if not line.strip():
-            flush_content()
-            i += 1
-            continue
-        
-        # 普通内容行
-        current_content.append(line)
-        i += 1
-    
+
     flush_content()
-    
-    # 移除最后多余的分隔符
+
     if result and result[-1] == "-" * 10:
         result.pop()
-    
+
     return '\n'.join(result)
