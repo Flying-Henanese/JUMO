@@ -39,7 +39,7 @@ os.environ['MINERU_MODEL_SOURCE'] = 'modelscope'
 os.environ['MINERU_CONFIG_DIR'] = './config/'
 os.environ['MINERU_DEVICE_MODE'] = f'cuda:{os.getenv("DEFAULT_CUDA_DEVICE", "0")}'
 os.environ['CUDA_VISIBLE_DEVICES'] = '5'
-from processor.pdf_processor import PDFProcessor
+from processor.vlm_mode import PDFProcessor
 from processor.converters.table_to_markdown import patch_batchanalyze_output_to_markdown    
 # 新版的mineru好像已经不在需要配置文件了
 

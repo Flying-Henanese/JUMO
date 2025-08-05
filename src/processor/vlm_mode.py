@@ -75,7 +75,7 @@ class PDFProcessor:
                     pdf_bytes,
                     image_writer=image_writer,      # 继续复用 FileBasedDataWriter
                     backend="sglang-client",
-                    server_url="http://localhost:30000"       # ★ 关键切换点
+                    server_url="http://127.0.0.1:30000"       # ★ 关键切换点
                 )
 
                 # 上传图片
