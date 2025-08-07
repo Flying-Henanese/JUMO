@@ -16,7 +16,7 @@ def split_text_with_overlap(text: str, max_length: int = 800, overlap: int = 50)
         start += max_length - overlap
     return chunks
 
-def split_paragraphs_with_overlap(text: str, max_length: int, overlap: int) -> list[str]:
+def split_paragraphs_with_overlap(text: str, max_length: int = 800, overlap: int = 50) -> list[str]:
     """
     根据段落优先的方式切分文本，长段落再用滑窗+重叠字符切分。
     
@@ -53,9 +53,8 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
     :return: 处理后的markdown文本
     """
 
-    md = MarkdownIt()
+    md = MarkdownIt("commonmark").enable('table')
     tokens = md.parse(md_text)
-
     result = []
     current_content = []
     title_stack = [""] * 6  # h1-h6
