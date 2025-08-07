@@ -53,9 +53,8 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
     :return: 处理后的markdown文本
     """
 
-    md = MarkdownIt()
+    md = MarkdownIt("commonmark").enable('table')
     tokens = md.parse(md_text)
-
     result = []
     current_content = []
     title_stack = [""] * 6  # h1-h6
