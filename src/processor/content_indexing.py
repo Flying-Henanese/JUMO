@@ -5,25 +5,41 @@ import re
 # 定义数据结构
 # 把文章原始结构分为段落、行、span（最小语义单元）
 class SpanInfo:
-    def __init__(self, content: str, bbox: List[float]):
+    """
+    定义span信息
+    content: span的文本内容
+    bbox: span的位置信息，[x0, y0, x1, y1]
+    """
+    def __init__(self, content: str, bbox: List[int]):  # 修改为List[int]
         self.content = content
         self.bbox = bbox
 
 class LineInfo:
-    def __init__(self, spans: List[SpanInfo], bbox: List[float]):
-        self.spans = spans
-        self.bbox = bbox
-        self.text = "".join(s.content for s in spans)
-        self.span_indices = list(range(len(spans)))
+    """
+    保存行信息
+    spans: 行内的span信息
+    bbox: 行的位置信息，[x0, y0, x1, y1]
+    """
+    def __init__(self, spans: List[SpanInfo], bbox: List[int]):  # 修改为List[int]
+        # 这里spans和span_indices是一一对应的
+        # span_indices是span在行内的索引
+        self.spans = spans # 语义单元span的集合
+        self.bbox = bbox # 行的位置信息
+        self.text = "".join(s.content for s in spans) # 整行内容
+        self.span_indices = list(range(len(spans))) # 行内span的索引集合
 
 class ParaBlockInfo:
-    def __init__(self, page_idx: int, block_type: str, bbox: List[float], lines: List[LineInfo]):
+    def __init__(self, page_idx: int, block_type: str, bbox: List[int], lines: List[LineInfo]):  # 修改为List[int]
         self.page_idx = page_idx
         self.type = block_type
         self.bbox = bbox
         self.lines = lines
+        # 这里把段落中每行的每个span都提取出来
+        # 并给每个span分配一个索引
         self.spans = [s for line in lines for s in line.spans]
+        # 这里是整段内容
         self.text = "".join(line.text for line in lines)
+        # 
         self.span_to_char = self._build_span_offset_map()
         self.ngram_index = self._build_ngram_index()
 
@@ -77,12 +93,16 @@ class ParaBlockInfo:
             start_span = end_span = None
             # find span indices that cover
             # span_index,(start,end)
-            for si,(s,e) in self.span_to_char.items():
                 # 如果找到了关键词所在的pos对应的span
-                if s <= pos < e:
+                    # 单次遍历中同时查找 start_span 和 end_span
+            for si, (s, e) in self.span_to_char.items():
+                if start_span is None and s <= pos < e:
                     start_span = si
-                if s < pos + len(keyword) <= e:
+                if end_span is None and s < pos + len(keyword) <= e:
                     end_span = si
+                if start_span is not None and end_span is not None:
+                    break
+
             if start_span is None or end_span is None:
                 # 没有找到精确匹配的span
                 # 退行到n-gram中查找
@@ -100,26 +120,18 @@ class ParaBlockInfo:
         return matches
     
     @staticmethod
-    def convert_bbox_from_points_to_pixels(bbox_pt, page_size_pt, target_dpi=200):
-        """
-        把bbox从点单位转换为像素单位
-        """
+    def convert_bbox_from_points_to_pixels(bbox_pt: List[int], page_size_pt: List[int], target_dpi: int = 200) -> List[int]:  # 三处修改为List[int]
         ratio = target_dpi / 72.0
         x0, y0, x1, y1 = bbox_pt
         pw, ph = page_size_pt
-        px0 = x0 * ratio
-        px1 = x1 * ratio
-        py0 = (ph - y1) * ratio
-        py1 = (ph - y0) * ratio
+        px0 = int(x0 * ratio)
+        px1 = int(x1 * ratio)
+        py0 = int((ph - y1) * ratio)
+        py1 = int((ph - y0) * ratio)
         return [px0, py0, px1, py1]
-    
+ 
     @staticmethod
-    def _merge_bboxes(bboxes: List[List[float]]) -> List[float]:
-        """
-        合并多个bbox为一个
-        取所有bbox中的最小x0,y0和最大x1,y1
-        应对内容横跨多个行的情况
-        """
+    def _merge_bboxes(bboxes: List[List[int]]) -> List[int]:  # 两处修改为List[int]
         x0 = min(b[0] for b in bboxes)
         y0 = min(b[1] for b in bboxes)
         x1 = max(b[2] for b in bboxes)
@@ -127,8 +139,16 @@ class ParaBlockInfo:
         return [x0, y0, x1, y1]
 
 class DocumentIndex:
-    def __init__(self, middle_json: Dict):
-        self.pages: Dict[int, List[ParaBlockInfo]] = {}
+    def __init__(self, pages: Dict[int, List[ParaBlockInfo]]):
+        self.pages: Dict[int, List[ParaBlockInfo]] = pages
+    
+    @staticmethod
+    def from_middle_json(middle_json: Dict) -> "DocumentIndex":
+        """
+        从middle.json 构建 DocumentIndex 实例。
+        将 JSON 数据解析与对象构造解耦，逻辑更清晰、易于测试与维护。
+        """
+        pages: Dict[int, List[ParaBlockInfo]] = {}
         for page in middle_json.get('pdf_info', []):
             idx = page.get('page_idx')
             para_list = []
@@ -137,8 +157,14 @@ class DocumentIndex:
                 for line in blk.get('lines', []):
                     spans = [SpanInfo(s.get('content', ''), s.get('bbox')) for s in line.get('spans', [])]
                     lines.append(LineInfo(spans, line.get('bbox')))
-                para_list.append(ParaBlockInfo(idx, blk.get('type'), blk.get('bbox'), lines))
-            self.pages[idx] = para_list
+                para_list.append(ParaBlockInfo(
+                    page_idx=idx,
+                    block_type=blk.get('type'),
+                    bbox=blk.get('bbox'),
+                    lines=lines
+                ))
+            pages[idx] = para_list
+        return DocumentIndex(pages)
 
     def search(self, keyword: str) -> List[Dict]:
         results = []
@@ -150,8 +176,8 @@ class DocumentIndex:
 
 # Example usage
 if __name__ == '__main__':
-    with open('middle.json', 'r', encoding='utf-8') as f:
+    with open('src/processor/middle.json', 'r', encoding='utf-8') as f:
         mj = json.load(f)
-    doc_index = DocumentIndex(mj)
-    hits = doc_index.search("南京市长江大桥")
+    doc_index = DocumentIndex.from_middle_json(mj)
+    hits = doc_index.search("computational")
     print(json.dumps(hits, ensure_ascii=False, indent=2))
