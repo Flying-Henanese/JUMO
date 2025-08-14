@@ -25,7 +25,7 @@ def get_bge_modelspaces_transformer(model_id='BAAI/bge-small-zh-v1.5'):
     model = Model.from_pretrained(model_id)
     model_path = getattr(model, 'model_dir', None)
     print("模型加载完成，缓存路径：", model_path)
-    return SentenceTransformer(model_path, device=DEVICE_MODE)
+    return SentenceTransformer(model_path, device="mps")
 
 def split_sentences_chinese(text):
     """
@@ -138,8 +138,10 @@ def semantic_chunking_with_auto_clusters(text, max_chunk_size=800, model_path=".
         return [text.strip()]
 
     # Step 2: 向量化
-    # model = SentenceTransformer(model_path, device="mps")
-    model = get_bge_modelspaces_transformer()
+    try:
+        model = SentenceTransformer(model_path, device="mps")
+    except OSError:
+        model = get_bge_modelspaces_transformer()
     embeddings = model.encode(sentences)
 
     # Step 3: 自动选择最佳簇数
