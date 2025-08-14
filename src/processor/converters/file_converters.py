@@ -8,7 +8,7 @@ from pathlib import Path
 
 def office_bytes_to_pdf_bytes(word_bytes: bytes, suffix:str=".docx") -> bytes:
     """将Word文件字节流转换为PDF字节流。
-
+       启动一个子进程，调用libreoffice进行转换
     参数:
         word_bytes: Word文件的字节流。
         suffix: 文件后缀（.docx或.doc），用于保存临时文件。
