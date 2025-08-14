@@ -1,24 +1,70 @@
 from markdown_it import MarkdownIt
+import re
+from sentence_transformers import SentenceTransformer
+from sklearn.cluster import AgglomerativeClustering
+from sklearn.metrics import silhouette_score
+import nltk
+from nltk.tokenize import sent_tokenize
+from modelscope import Model
+import os
+
+DEVICE_MODE = os.getenv("DEVICE_MODE", "mps")
+# 确保 punkt_tab 可用
+try:
+    nltk.data.find('tokenizers/punkt_tab')
+except LookupError:
+    nltk.download('punkt_tab')
 
 
-def split_text_with_overlap(text: str, max_length: int = 800, overlap: int = 50) -> list[str]:
+def get_bge_modelspaces_transformer(model_id='BAAI/bge-small-zh-v1.5'):
     """
-    将文本按 max_length 切分，每段之间有 overlap 个字符的重叠部分。
+    使用 ModelScope 自动加载模型，若本地不存在则下载并缓存。
+    返回 SentenceTransformer 实例。
     """
-    assert max_length > overlap, "max_length 必须大于 overlap"
-    
-    chunks = []
-    start = 0
-    while start < len(text):
-        end = min(start + max_length, len(text))
-        chunk = text[start:end]
-        chunks.append(chunk.strip())
-        start += max_length - overlap
-    return chunks
+    print(f"正在使用 ModelScope 加载模型：{model_id}（缺失则自动下载）…")
+    model = Model.from_pretrained(model_id)
+    model_path = getattr(model, 'model_dir', None)
+    print("模型加载完成，缓存路径：", model_path)
+    return SentenceTransformer(model_path, device=DEVICE_MODE)
+
+def split_sentences_chinese(text):
+    """
+    使用正则表达式按中文标点分句，同时保留句尾标点
+    """
+    sentences = re.split(r'(?<=[。！？])', text)
+    return [s.strip() for s in sentences if s.strip()]
+
+def split_mixed_sentences(text: str) -> list[str]:
+    """
+    能同时处理中文和英文分句。
+    英文段落使用 NLTK；中文段落使用 zh regex 或 fallback。
+    """
+    chunks = re.split(r'(\n+)', text)  # 粗略按行分隔，并保留换行符
+    sentences = []
+
+    for ch in chunks:
+        if not ch.strip():
+            continue
+        # 英文段落判断：包含 [a-zA-Z] 且结束有 . ? ! 空格
+        if re.search(r'[A-Za-z]', ch):
+            parts = sent_tokenize(ch)
+            sentences.extend([p.strip() for p in parts if p.strip()])
+        else:
+            # 优先用 zhon 精确匹配
+            sents = split_sentences_chinese(ch)
+            if sents:
+                sentences.extend([s.strip() for s in sents if s.strip()])
+            else:
+                parts = re.split(r'(?<=[。！？])', ch)
+                sentences.extend([p.strip() for p in parts if p.strip()])
+    return sentences
+
 
 def split_paragraphs_with_overlap(text: str, max_length: int = 800, overlap: int = 50) -> list[str]:
     """
-    根据段落优先的方式切分文本，长段落再用滑窗+重叠字符切分。
+    根据段落优先的方式切分文本：
+    1. 先将短段落聚合，保证每段尽量接近 max_length。
+    2. 对过长段落使用滑窗+重叠字符切分。
     
     :param text: 原始 Markdown 文本
     :param max_length: 每段最大长度
@@ -27,21 +73,100 @@ def split_paragraphs_with_overlap(text: str, max_length: int = 800, overlap: int
     """
     assert max_length > overlap, "max_length 必须大于 overlap"
 
+    # 初步拆分段落并去掉空段落
     paragraphs = [p.strip() for p in text.strip().split('\n\n') if p.strip()]
-    result = []
-
+    
+    # 聚合短段落
+    aggregated_paragraphs = []
+    current_chunk = ""
     for para in paragraphs:
+        # 检查当前段落加上现在正在处理的段落是否超过 max_length
+        # 如果不超过的话可以进行整合
+        if len(current_chunk) + len(para) + 2 <= max_length:  # +2 预留换行符
+            if current_chunk:
+                current_chunk += "\n\n" + para
+            else:
+                current_chunk = para
+        # 如果超过的话，之前的current_chunk自己成为一段
+        # 然后当前段落成为新的current_chunk
+        else:
+            if current_chunk:
+                aggregated_paragraphs.append(current_chunk)
+            current_chunk = para
+    # 最后有剩余的段落，没有后续的段落和他作伴了
+    # 所以直接加入结果
+    if current_chunk:
+        aggregated_paragraphs.append(current_chunk)
+
+    # 对过长段落使用滑窗切分
+    result = []
+    for para in aggregated_paragraphs:
         if len(para) <= max_length:
             result.append(para)
         else:
-            start = 0
-            while start < len(para):
-                end = min(start + max_length, len(para))
-                chunk = para[start:end].strip()
-                result.append(chunk)
-                start += max_length - overlap
+            result.extend(semantic_chunking_with_auto_clusters(para, max_length))
 
     return result
+
+def find_best_num_clusters(embeddings, min_clusters=2, max_clusters=10):
+    """
+    使用轮廓系数选择最佳簇数
+    使用效果不是很好，先放这里吧
+    """
+    best_score = -1
+    best_k = min_clusters
+
+    for k in range(min_clusters, min(max_clusters, len(embeddings)) + 1):
+        labels = AgglomerativeClustering(n_clusters=k).fit_predict(embeddings)
+        if len(set(labels)) == 1:  # 全部在同一簇 → 跳过
+            continue
+        score = silhouette_score(embeddings, labels)
+        if score > best_score:
+            best_score = score
+            best_k = k
+
+    return best_k
+
+
+def semantic_chunking_with_auto_clusters(text, max_chunk_size=800, model_path="./models/bge-small-zh-v1.5"):
+    """
+    自动选择最佳簇数的语义切分
+    """
+    # Step 1: 分句
+    sentences = split_mixed_sentences(text)
+    if len(sentences) < 2:
+        return [text.strip()]
+
+    # Step 2: 向量化
+    # model = SentenceTransformer(model_path, device="mps")
+    model = get_bge_modelspaces_transformer()
+    embeddings = model.encode(sentences)
+
+    # Step 3: 自动选择最佳簇数
+    # best_k = find_best_num_clusters(embeddings, min_clusters=2, max_clusters=min(10, len(sentences)))
+    best_k = max(len(sentences)//max_chunk_size,1)+1
+    print(f"最佳簇数: {best_k}")
+    # Step 4: 聚类
+    labels = AgglomerativeClustering(n_clusters=best_k).fit_predict(embeddings)
+
+    # Step 5: 按聚类结果组合句子，并限制段落大小
+    chunks = []
+    current_chunk = ""
+    current_label = labels[0]
+
+    for sentence, label in zip(sentences, labels):
+        if label != current_label or len(current_chunk) + len(sentence) > max_chunk_size:
+            if current_chunk.strip():
+                chunks.append(current_chunk.strip())
+            current_chunk = sentence
+            current_label = label
+        else:
+            current_chunk += sentence
+
+    if current_chunk.strip():
+        chunks.append(current_chunk.strip())
+
+    return chunks
 
 def process_markdown(md_text: str, max_length: int = 800) -> str:
     """
@@ -89,15 +214,17 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
         title_path = get_title_path()
         # 如果当前段落为表格，直接复制
         if is_table:
-            header = f"{'#' * level} {title_path}|Table" if title_path else "Table"
+            header = f"{'#' * level} {title_path}|Table" if title_path else f"{'#' * level} Table"
             result.extend([header, content, "-" * 10])
         else:
             # 处理普通的文本段落
             if len(content) > max_length:
-                # 如果段落长度超过了最大长度，则进行切分
-                chunks = split_paragraphs_with_overlap(content, max_length)
+                # 使用段落切分法
+                # chunks = split_paragraphs_with_overlap(content, max_length)
+                # 使用句子语义近似程度切分
+                chunks = semantic_chunking_with_auto_clusters(content, max_chunk_size=max_length)
                 for i, chunk in enumerate(chunks, 1):
-                    header = f"{'#' * level} {title_path}|Part {i}" if title_path else f"Part {i}"
+                    header = f"{'#' * level} {title_path}|Part {i}" if title_path else f"{'#' * level} Part {i}"
                     result.extend([header, chunk, "-" * 10])
             else:
                 header = f"{'#' * level} {title_path}" if title_path else ""
@@ -159,3 +286,12 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
         result.pop()
 
     return '\n'.join(result)
+
+
+if __name__ == "__main__":
+    markdown_file = "README.md"
+    with open(markdown_file, 'r', encoding='utf-8') as f:
+        md_text = f.read()
+    print("access the file")
+    processed_md = process_markdown(md_text, max_length=500)
+    print(processed_md) 

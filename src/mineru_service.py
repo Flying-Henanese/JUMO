@@ -7,10 +7,12 @@ if __name__ == "__main__":
     from startup import *
     import uvicorn
     from route.pdf_route import router as pdf_router
+    from route.documents_route import router as documents_router
     from fastapi import FastAPI
     # 预加载vlm模型
     # from processor.warmup.vlm_predictor_warmup import predictor
     app = FastAPI() # 启动服务
     app.include_router(pdf_router)
+    app.include_router(documents_router)
     logger.info("启动FastAPI服务，监听端口8000")
     uvicorn.run(app, host="0.0.0.0", port=8000)

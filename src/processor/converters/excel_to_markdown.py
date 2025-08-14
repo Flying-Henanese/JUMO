@@ -1,8 +1,6 @@
 import pandas as pd
 
-from utils.logging import AppLogger
-
-logger = AppLogger.get_logger(__name__)
+from loguru import logger
 
 
 def excel_to_markdown(
@@ -10,6 +8,7 @@ def excel_to_markdown(
 ) -> list:
     """
     将Excel文件内容转换为Markdown格式的列表
+    最终传递给知识库
 
     Args:
         excel_content: 可读取的Excel文件内容(文件路径或文件对象)
@@ -85,26 +84,8 @@ def excel_to_markdown(
             md_content.append("----------") # 与知识库之间约定的分隔符
             md_content.append("\n\n") # 再添加一个换行
 
-        # region
-        # # ========== 文件输出 ==========
-        # os.makedirs(output_dir, exist_ok=True)
-        # output_path = os.path.join(output_dir, f"{base_name}.md")
-
-        # with open(output_path, "w", encoding="utf-8", newline="\n") as f:
-        #     f.writelines(md_content)
-        # endregion
-
         logger.info("转换成功!")
         return md_content
     except Exception as e:
         logger.error(f"处理失败: {type(e).__name__} - {str(e)}")
         raise
-
-
-# region
-# if __name__ == "__main__":
-#     # 使用示例
-#     excel_path = r".\test.xlsx"
-#     output_dir = r".\output"
-#     print(excel_to_markdown(excel_path,output_path= output_dir))
-# endregion

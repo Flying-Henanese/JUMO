@@ -112,6 +112,10 @@ dependencies = [
     "sglang (>=0.4.8.post1,<0.5.0)",
     "beautifulsoup4 (>=4.13.4,<5.0.0)",
     "markdown-it-py (>=3.0.0,<4.0.0)",
+    "docling (>=2.43.0,<3.0.0)",
+    "peft (>=0.17.0,<0.18.0)",
+    "sentence-transformers (>=5.1.0,<6.0.0)",
+    "nltk (>=3.9.1,<4.0.0)",
 ]
 
 
@@ -139,6 +143,5 @@ url = "https://mirrors.aliyun.com/pypi/simple/"
 
 [tool.poetry.group.optional.dependencies]
 triton = { version = "^3.3.1", optional = true }
-
 
 
