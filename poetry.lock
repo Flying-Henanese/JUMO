@@ -39,6 +39,23 @@ url = "https://mirrors.aliyun.com/pypi/simple"
 reference = "tsinghua"
 
 [[package]]
+name = "addict"
+version = "2.4.0"
+description = "Addict is a dictionary whose items can be set using both attribute and item syntax."
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "addict-2.4.0-py3-none-any.whl", hash = "sha256:249bb56bbfd3cdc2a004ea0ff4c2b6ddc84d53bc2194761636eb314d5cfa5dfc"},
+    {file = "addict-2.4.0.tar.gz", hash = "sha256:b3b2210e0e067a281f5646c8c5db92e99b7231ea8b0eb5f74dbdf9e259d4e494"},
+]
+
+[package.source]
+type = "legacy"
+url = "https://mirrors.aliyun.com/pypi/simple"
+reference = "tsinghua"
+
+[[package]]
 name = "aiohappyeyeballs"
 version = "2.6.1"
 description = "Happy Eyeballs for asyncio"
@@ -9390,4 +9407,4 @@ reference = "tsinghua"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "e61a25d1da8b0e24d549f343774ae4ad6a59d6249864ca9039f971722df84b59"
+content-hash = "88abdc9fb0bb0676318e0bab0ab40f3424c008302ab35b4921cfd9f5df631560"
