@@ -7,22 +7,43 @@ from pydantic import BaseModel
 
 from const.task_status_enum import TaskStatus
 
+# 提供整个项目的ORM模型
+# 所有定义对模型操作的类都要继承Base 数据库模型的唯一入口点
+# 这个基类是连接Python世界中的对象和关系型数据库中表的桥梁
 Base = declarative_base()
 
 class Task(Base):
-    __tablename__ = "tasks"
+    """
+    任务列表
+    记录所有的分析任务
+    """
+    # 表名
+    __tablename__ = "tasks" 
+    # 主键id
     id = Column(Integer, primary_key=True, autoincrement=True)
+    # 任务id,通过简化版uuid生成
     task_id = Column(String, unique=True, nullable=False)
+    # 源文件所在的桶名 
     bucket_name = Column(String)
+    # 源文件的文件名
     object_key = Column(String, nullable=False)
+    # 输出文件所在的桶名
     output_bucket = Column(String)
+    # 公式识别是否开启
     formula_enabled = Column(Integer, nullable=False, default=0)
+    # ocr识别是否开启
     ocr_enabled = Column(Integer, nullable=False, default=0)
+    # 表格识别是否开启
     table_enabled = Column(Integer, nullable=False, default=0)
+    # ocr识别语言
     ocr_lang = Column(String)
+    # 输出信息,json格式
     output_info = Column(Text, default='')
+    # 创建时间
     create_time = Column(DateTime, nullable=False, server_default=func.current_timestamp())
+    # 完成时间
     finish_time = Column(DateTime)
+    # 外键约束,关联ActiveTask表
     active_task = relationship("ActiveTask", uselist=False, back_populates="task")
 
     def __repr__(self):

@@ -60,7 +60,7 @@ def split_mixed_sentences(text: str) -> list[str]:
     return sentences
 
 
-def split_paragraphs_with_overlap(text: str, max_length: int = 800, overlap: int = 50) -> list[str]:
+def split_paragraphs_with_overlap(text: str, max_length: int = 500, overlap: int = 50) -> list[str]:
     """
     根据段落优先的方式切分文本：
     1. 先将短段落聚合，保证每段尽量接近 max_length。
@@ -128,7 +128,7 @@ def find_best_num_clusters(embeddings, min_clusters=2, max_clusters=10):
     return best_k
 
 
-def semantic_chunking_with_auto_clusters(text, max_chunk_size=800, model_path="./models/bge-small-zh-v1.5"):
+def semantic_chunking_with_auto_clusters(text, max_chunk_size=500, model_path="./models/bge-small-zh-v1.5"):
     """
     自动选择最佳簇数的语义切分
     """

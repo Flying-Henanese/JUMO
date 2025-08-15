@@ -12,7 +12,14 @@ import os
 from wrapper.logger import log_with_time_consumption
 
 class TaskRepository:
+    """
+    定义对Task表(任务信息表)的所有操作
+    """
     def __init__(self, db_url: str = None):
+        """
+        初始化TaskRepository
+        :param db_url: 数据库连接字符串,默认使用环境变量MINERU_DB_URL,如果未设置,则使用默认路径
+        """
         if db_url is None and not os.getenv("MINERU_DB_URL"):
             db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'database', 'mineru')
             db_url = f"sqlite:///{db_path}"
