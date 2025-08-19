@@ -5,27 +5,50 @@ from sklearn.cluster import AgglomerativeClustering
 from sklearn.metrics import silhouette_score
 import nltk
 from nltk.tokenize import sent_tokenize
-from modelscope import Model
+from transformers import AutoModel, AutoTokenizer
 import os
+import threading
+from loguru import logger
 
-DEVICE_MODE = os.getenv("DEVICE_MODE", "mps")
+
+DEVICE_MODE = os.getenv("DEVICE_MODE", "cpu") # 默认使用CPU进行计算
 # 确保 punkt_tab 可用
+# 首先检测是否已存在punkt_tab模型
+# 如果加载失败，尝试下载
 try:
-    nltk.data.find('tokenizers/punkt_tab')
+    nltk.data.find('tokenizers/punkt_tab') # punkt_tab 是 NLTK 用于分句的模型
 except LookupError:
     nltk.download('punkt_tab')
 
 
-def get_bge_modelspaces_transformer(model_id='BAAI/bge-small-zh-v1.5'):
+class SingletonSentenceTransformer:
     """
-    使用 ModelScope 自动加载模型，若本地不存在则下载并缓存。
-    返回 SentenceTransformer 实例。
+    使用单例模式确保全程只创建一个 SentenceTransformer 实例。
     """
-    print(f"正在使用 ModelScope 加载模型：{model_id}（缺失则自动下载）…")
-    model = Model.from_pretrained(model_id)
-    model_path = getattr(model, 'model_dir', None)
-    print("模型加载完成，缓存路径：", model_path)
-    return SentenceTransformer(model_path, device="mps")
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls, model_id='BAAI/bge-small-zh-v1.5', mirror=True, device=DEVICE_MODE):
+        if cls._instance is None:
+            with cls._lock:
+                try:
+                    cls._instance = SentenceTransformer('./models/bge-small-zh-v1.5', device=device)
+                except OSError:
+                    logger.error(f"加载本地模型 {model_id} 失败")
+                if cls._instance is None:
+                    if mirror:
+                        os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
+                    print(f"正在加载模型：{model_id}（mirror={mirror}）…")
+                    cls._instance = SentenceTransformer(model_id, device=device)
+                    print("模型加载完成。")
+        return cls._instance
+
+
+def get_bge_sentence_transformer_singleton(model_id='BAAI/bge-small-zh-v1.5', mirror=True, device=DEVICE_MODE):
+    """
+    获取全局唯一的 SentenceTransformer 实例。
+    """
+    return SingletonSentenceTransformer(model_id=model_id, mirror=mirror, device=device)
 
 def split_sentences_chinese(text):
     """
@@ -47,11 +70,11 @@ def split_mixed_sentences(text: str) -> list[str]:
             continue
         # 英文段落判断：包含 [a-zA-Z] 且结束有 . ? ! 空格
         if re.search(r'[A-Za-z]', ch):
-            parts = sent_tokenize(ch)
+            parts = sent_tokenize(ch) # 使用 NLTK 分句
             sentences.extend([p.strip() for p in parts if p.strip()])
         else:
             # 优先用 zhon 精确匹配
-            sents = split_sentences_chinese(ch)
+            sents = split_sentences_chinese(ch) # 使用比较简单的自定义中文分句
             if sents:
                 sentences.extend([s.strip() for s in sents if s.strip()])
             else:
@@ -138,10 +161,7 @@ def semantic_chunking_with_auto_clusters(text, max_chunk_size=500, model_path=".
         return [text.strip()]
 
     # Step 2: 向量化
-    try:
-        model = SentenceTransformer(model_path, device="mps")
-    except OSError:
-        model = get_bge_modelspaces_transformer()
+    model = get_bge_sentence_transformer_singleton(model_path)
     embeddings = model.encode(sentences)
 
     # Step 3: 自动选择最佳簇数
