@@ -44,20 +44,10 @@ class MinioConnection:
         )
         logger.info(f"初始化Minio连接: endpoint={endpoint}")
 
-# region
-    # # 初始化一个OSS连接
-    # def __init__(self):
-    #     self.client = Minio(
-    #         endpoint=os.getenv('MINIO_ENDPOINT'),
-    #         access_key=os.getenv('MINIO_ACCESS_KEY'),
-    #         secret_key=os.getenv('MINIO_SECRET_KEY'),
-    #         secure=os.getenv('MINIO_SECURE', 'false').lower() == 'true'
-    #     )
-    #     logger.info(f"初始化Minio连接，endpoint: {os.getenv('MINIO_ENDPOINT')}, bucket_name: {os.getenv('MINIO_BUCKET_NAME')}")
-    #     # 注意这里是默认值,
-    #     # self.bucket_name = os.getenv('MINIO_BUCKET_NAME')
-# endregion
     def upload_file_by_path(self, object_name: str, bucket_name:str, file_path: str) -> bool:
+        """
+        通过文件路径上传文件到OSS成为一个文件
+        """
         try:
             self.client.fput_object(
                 bucket_name=bucket_name,
@@ -76,6 +66,9 @@ class MinioConnection:
         file_bytes: bytes,
         content_type: str) -> bool:
         try:
+            """
+            上传文件字节流到OSS成为一个文件
+            """
             self.client.put_object(
                 bucket_name=bucket_name,
                 object_name=object_name,
@@ -88,6 +81,9 @@ class MinioConnection:
             return False
 
     def download_file(self, object_name: str, bucket_name:str, file_path: str) -> bool:
+        """
+        下载文件到file_path（调用者指定一个文件路径）
+        """
         success = False
         try:
             self.client.fget_object(
@@ -103,6 +99,9 @@ class MinioConnection:
             return success
 
     def delete_file(self, object_name: str) -> bool:
+        """
+        删除文件
+        """
         success = False
         try:
             self.client.remove_object(
@@ -118,6 +117,9 @@ class MinioConnection:
             return success
 
     def get_file_byte(self,object_name: str,bucket_name:str) -> bytes:
+        """
+        获取文件的字节流
+        """
         try:
             response = self.client.get_object(
                 bucket_name=bucket_name,
@@ -129,6 +131,9 @@ class MinioConnection:
             raise(f'获取文件失败: {e}')
 
     def file_exists(self,object_name: str,bucket_name:str) -> bool:
+        """
+        检查文件是否存在
+        """
         try:
             self.client.stat_object(bucket_name,object_name)
             return True

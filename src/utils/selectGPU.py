@@ -9,7 +9,10 @@ from dotenv import load_dotenv
 from const.devices_enums import DeviceType
 load_dotenv()
 MINIMUM_GPU_MEMORY = int(os.getenv('MINIMUM_GPU_MEMORY', 8*1024**3))
-
+"""
+后续应该把不同的GPU放到不同的工作进程中
+后期可以这样修改
+"""
 @dataclass
 class GPUInfo:
     index: int
