@@ -1,6 +1,5 @@
 from mineru.backend.pipeline.para_split import __merge_2_list_blocks as original_merge
 from mineru.backend.pipeline.para_split import SplitFlag  # 确保导入原始常量
-import mineru.backend.pipeline.para_split
 
 def safe_merge_2_list_blocks(block1, block2):
     """安全版本的合并函数，处理缺失字段"""
