@@ -1,11 +1,11 @@
 from markdown_it import MarkdownIt
+from mdit_py_plugins.dollarmath import dollarmath_plugin
 import re
 from sentence_transformers import SentenceTransformer
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.metrics import silhouette_score
 import nltk
 from nltk.tokenize import sent_tokenize
-from transformers import AutoModel, AutoTokenizer
 import os
 import threading
 from loguru import logger
@@ -19,8 +19,11 @@ try:
     nltk.data.find('tokenizers/punkt_tab') # punkt_tab 是 NLTK 用于分句的模型
 except LookupError:
     nltk.download('punkt_tab')
-
-
+"""
+不论是word,pdf还是图片，最终都会被转换成markdown格式
+在这个模块中会把生成的中间markdown进行切分处理，使得其
+可以在知识库应用中被合理地向量化
+"""
 class SingletonSentenceTransformer:
     """
     使用单例模式确保全程只创建一个 SentenceTransformer 实例。
@@ -72,6 +75,7 @@ def split_mixed_sentences(text: str) -> list[str]:
         if re.search(r'[A-Za-z]', ch):
             parts = sent_tokenize(ch) # 使用 NLTK 分句
             sentences.extend([p.strip() for p in parts if p.strip()])
+        # 中文段落判断：非英文段落就是中文段落
         else:
             # 优先用 zhon 精确匹配
             sents = split_sentences_chinese(ch) # 使用比较简单的自定义中文分句
@@ -82,7 +86,7 @@ def split_mixed_sentences(text: str) -> list[str]:
                 sentences.extend([p.strip() for p in parts if p.strip()])
     return sentences
 
-
+# region
 def split_paragraphs_with_overlap(text: str, max_length: int = 500, overlap: int = 50) -> list[str]:
     """
     根据段落优先的方式切分文本：
@@ -130,11 +134,12 @@ def split_paragraphs_with_overlap(text: str, max_length: int = 500, overlap: int
             result.extend(semantic_chunking_with_auto_clusters(para, max_length))
 
     return result
+# endregion
 
 def find_best_num_clusters(embeddings, min_clusters=2, max_clusters=10):
     """
     使用轮廓系数选择最佳簇数
-    使用效果不是很好，先放这里吧
+    实际效果不是很好，先放这里，待后续研究
     """
     best_score = -1
     best_k = min_clusters
@@ -151,7 +156,7 @@ def find_best_num_clusters(embeddings, min_clusters=2, max_clusters=10):
     return best_k
 
 
-def semantic_chunking_with_auto_clusters(text, max_chunk_size=500, model_path="./models/bge-small-zh-v1.5"):
+def semantic_chunking_with_auto_clusters(text, max_chunk_size=500, model_id="BAAI/bge-small-zh-v1.5"):
     """
     自动选择最佳簇数的语义切分
     """
@@ -161,13 +166,12 @@ def semantic_chunking_with_auto_clusters(text, max_chunk_size=500, model_path=".
         return [text.strip()]
 
     # Step 2: 向量化
-    model = get_bge_sentence_transformer_singleton(model_path)
+    model = get_bge_sentence_transformer_singleton(model_id)
     embeddings = model.encode(sentences)
 
     # Step 3: 自动选择最佳簇数
-    # best_k = find_best_num_clusters(embeddings, min_clusters=2, max_clusters=min(10, len(sentences)))
+    # 这里使用最简单无脑的方法, 簇数 = 句子数//最大段落长度+1
     best_k = max(len(sentences)//max_chunk_size,1)+1
-    print(f"最佳簇数: {best_k}")
     # Step 4: 聚类
     labels = AgglomerativeClustering(n_clusters=best_k).fit_predict(embeddings)
 
@@ -201,6 +205,7 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
     """
 
     md = MarkdownIt("commonmark").enable('table')
+    md.use(dollarmath_plugin,allow_space=True,allow_digits=True)
     tokens = md.parse(md_text)
     result = []
     current_content = []
@@ -221,7 +226,7 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
                 return i + 1
         return 1  # 默认最小一级
 
-    def flush_content(is_table=False):
+    def flush_content(special_element=None):
         """
         检查是否还有待处理内容
         """
@@ -235,8 +240,8 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
         level = get_current_level()
         title_path = get_title_path()
         # 如果当前段落为表格，直接复制
-        if is_table:
-            header = f"{'#' * level} {title_path}|Table" if title_path else f"{'#' * level} Table"
+        if special_element:
+            header = f"{'#' * level} {title_path}|{special_element}" if title_path else f"{'#' * level} {special_element}"
             result.extend([header, content, "-" * 10])
         else:
             # 处理普通的文本段落
@@ -258,7 +263,6 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
     i = 0
     while i < len(tokens):
         token = tokens[i]
-
         # 标题处理
         if token.type == "heading_open":
             flush_content()
@@ -297,7 +301,14 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
             current_content.append(f"```\n{token.content}\n```")
             i += 1
             continue
-
+        # 数学公式
+        elif token.type == "math_block":
+            flush_content()
+            print(f'数学公式:{token.content}')
+            current_content.append(f"$$ {token.content} $$")
+            flush_content(special_element='Math Block')
+            i += 1
+            continue
         # 其他内容
         else:
             i += 1
@@ -310,10 +321,18 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
     return '\n'.join(result)
 
 
+# region
+# 测试代码
 if __name__ == "__main__":
-    markdown_file = "README.md"
+    markdown_file = "test.md"
     with open(markdown_file, 'r', encoding='utf-8') as f:
         md_text = f.read()
-    print("access the file")
-    processed_md = process_markdown(md_text, max_length=500)
-    print(processed_md) 
+    processed_md = process_markdown(md_text, max_length=500) 
+    print(processed_md)
+    import subprocess
+    out_file = "processed_test.md"
+    with open(out_file, 'w', encoding='utf-8') as f:
+        f.write(processed_md)    
+    print(f'处理后的markdown文件已保存到{out_file},现在来看看效果')
+    subprocess.run(['open',out_file])
+# endregion
