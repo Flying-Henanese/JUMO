@@ -117,6 +117,7 @@ dependencies = [
     "sentence-transformers (>=5.1.0,<6.0.0)",
     "nltk (>=3.9.1,<4.0.0)",
     "addict (>=2.4.0,<3.0.0)",
+    "mdit-py-plugins (>=0.5.0,<0.6.0)",
 ]
 
 
