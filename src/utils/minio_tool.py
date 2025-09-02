@@ -154,3 +154,38 @@ class MinioConnection:
         except Exception as e:
             logger.error(f"检查存储桶失败: {bucket_name}, 异常: {e}")
             return False
+
+    def list_objects(self, bucket_name: str, prefix: str = "", recursive: bool = True) -> list:
+        """
+        列出存储桶中的对象，支持前缀过滤
+        :param bucket_name: 存储桶名称
+        :param prefix: 对象前缀过滤
+        :param recursive: 是否递归搜索
+        :return: 对象名称列表
+        """
+        try:
+            objects = self.client.list_objects(bucket_name, prefix=prefix, recursive=recursive)
+            return [obj.object_name for obj in objects]
+        except Exception as e:
+            logger.error(f"列出对象失败: bucket={bucket_name}, prefix={prefix}, 异常: {e}")
+            return []
+
+    def find_files_by_pattern(self, bucket_name: str, pattern: str) -> list:
+        """
+        根据通配符模式查找文件
+        :param bucket_name: 存储桶名称
+        :param pattern: 通配符模式（如："*middle.json"）
+        :return: 匹配的文件路径列表
+        """
+        import fnmatch
+        
+        # 提取前缀用于优化搜索
+        if "*" in pattern:
+            prefix = pattern.split("*")[0]
+        else:
+            prefix = ""
+        
+        all_objects = self.list_objects(bucket_name, prefix=prefix)
+        matching_files = fnmatch.filter(all_objects, pattern)
+        
+        return matching_files
