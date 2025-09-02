@@ -1,6 +1,11 @@
 from typing import List, Tuple, Dict
 import json
 import re
+import pickle
+import os
+import tempfile
+from data.redis.cache_service import CacheService
+from utils.minio_tool import MinioConnection
 
 # 定义数据结构
 # 把文章原始结构分为段落、行、span（最小语义单元）
@@ -181,3 +186,97 @@ if __name__ == '__main__':
     doc_index = DocumentIndex.from_middle_json(mj)
     hits = doc_index.search("computational")
     print(json.dumps(hits, ensure_ascii=False, indent=2))
+
+
+class DocumentIndexService:
+    def __init__(self):
+        self.cache_service = CacheService()
+        self.minio_client = MinioConnection()
+
+    def _find_middle_json_file(self, task_id: str, bucket_name: str) -> str:
+        """
+        查找指定任务ID的middle.json文件路径
+        :param task_id: 任务ID
+        :param bucket_name: OSS存储桶名称
+        :return: middle.json文件路径
+        """
+        # 构建通配符模式
+        pattern = f"{task_id}/*middle.json"
+        
+        # 查找匹配的文件
+        matching_files = self.minio_client.find_files_by_pattern(bucket_name, pattern)
+        
+        if not matching_files:
+            raise FileNotFoundError(f"middle.json not found for task {task_id} in bucket {bucket_name}")
+        
+        # 假设只有一个匹配文件，返回第一个
+        return matching_files[0]
+        
+    def load_document_index_from_oss(self, task_id: str, bucket_name: str) -> bool:
+        """
+        从OSS下载middle.json文件，创建DocumentIndex对象并存入Redis
+        :param task_id: 任务ID
+        :param bucket_name: OSS存储桶名称
+        :return: 是否成功
+        """
+        try:
+            # 从OSS下载middle.json文件
+            file_name = self._find_middle_json_file(task_id, bucket_name)
+            # 检查文件是否存在
+            if not file_name:
+                raise FileNotFoundError(f"middle.json not found for task {task_id} in bucket {bucket_name}")
+            
+            # 下载文件到临时文件
+            with tempfile.NamedTemporaryFile(mode='w+', suffix='.json', delete=False) as temp_file:
+                temp_path = temp_file.name
+            
+            # 下载文件
+            if not self.minio_client.download_file(file_name, bucket_name, temp_path):
+                raise Exception(f"Failed to download middle.json for task {task_id}")
+            
+            # 读取JSON文件并创建DocumentIndex对象
+            with open(temp_path, 'r', encoding='utf-8') as f:
+                middle_json = json.load(f)
+            
+            document_index = DocumentIndex.from_middle_json(middle_json)
+            
+            # 序列化DocumentIndex对象并存入Redis
+            serialized_data = pickle.dumps(document_index)
+            redis_key = f"document_index:{task_id}"
+            self.cache_service.set(redis_key, serialized_data)
+            
+            # 清理临时文件
+            os.unlink(temp_path)
+            
+            return True
+            
+        except Exception as e:
+            print(f"Error loading document index from OSS: {e}")
+            return False
+
+    def search_keyword_in_document(self, task_id: str, keyword: str) -> List[Dict]:
+        """
+        从Redis中获取DocumentIndex对象并搜索关键词
+        :param task_id: 任务ID
+        :param keyword: 要搜索的关键词
+        :return: 搜索结果列表
+        """
+        try:
+            # 从Redis获取序列化的DocumentIndex对象
+            redis_key = f"document_index:{task_id}"
+            serialized_data = self.cache_service.get(redis_key)
+            
+            if serialized_data is None:
+                raise ValueError(f"No document index found for task {task_id}")
+            
+            # 反序列化DocumentIndex对象
+            document_index: DocumentIndex = pickle.loads(serialized_data)
+            
+            # 搜索关键词
+            results = document_index.search(keyword)
+            
+            return results
+            
+        except Exception as e:
+            print(f"Error searching keyword in document: {e}")
+            return []
