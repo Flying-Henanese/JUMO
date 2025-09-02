@@ -120,6 +120,7 @@ dependencies = [
     "mdit-py-plugins (>=0.5.0,<0.6.0)",
     "celery (>=5.5.3,<6.0.0)",
     "redislite (>=6.2.912183,<7.0.0)",
+    "ray[serve] (>=2.49.0,<3.0.0)",
 ]
 
 
