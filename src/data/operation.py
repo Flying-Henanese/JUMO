@@ -8,6 +8,8 @@ from const.task_status_enum import TaskStatus
 from fastapi import HTTPException
 from loguru import logger
 import os
+from contextlib import contextmanager
+from typing import Callable
 
 from wrapper.logger import log_with_time_consumption
 
@@ -27,8 +29,17 @@ class TaskRepository:
         elif os.getenv("MINERU_DB_URL"):
             db_url = f'sqlite:///{os.getenv("MINERU_DB_URL")}'
             logger.info(f"使用环境变量MINERU_DB_URL初始化数据库: {db_url}")
+        # 创建sqlite连接引擎
+        # 连接参数check_same_thread=False用于支持多线程环境
+        # 因为sqlite的写入行为是串行的，所以不会产生线程安全问题
         self.engine = create_engine(db_url, connect_args={"check_same_thread": False})
+        # 用来创建数据库会话
+        # 1. bind=self.engine 绑定到创建的引擎
+        # 2. autoflush=False 禁用自动刷新，需要使用flush()手动刷新才会同步到数据库
+        # 3. autocommit=False 自动提交事务，需要手动commit才会将变更保存到数据库，方便回滚
         self.SessionLocal = sessionmaker(bind=self.engine, autoflush=False, autocommit=False)
+        # 扫描所有继承自base的ORM模型类，自动创建对应的数据库表（如果在新环境没有sqlite文件也会创建）
+        # 注意：如果数据库表已经存在，会忽略重复创建的操作
         Base.metadata.create_all(bind=self.engine)
         self.clear_active_tasks()  # 新增：初始化时清理active_task表
 
@@ -269,4 +280,37 @@ class TaskRepository:
             )
         finally:
             db.close()
+    
+    @contextmanager 
+    def get_db_session(self):
+        """
+        数据库会话上下文管理器
+        
+        用于在with语句块中自动管理数据库会话的创建、提交和回滚。
+        确保在块结束时是否提交事务，以及在发生异常时是否回滚。
+        
+        - yield 之前的部分相当于 __enter__ 方法，在进入 with 语句块时执行
+        - yield 之后的部分相当于 __exit__ 方法，在退出 with 语句块时执行
+        
+        Yields
+        ------
+        Session
+            数据库会话对象，用于执行数据库操作。
+        """
+        db = self.SessionLocal()
+        try:
+            yield db
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            raise e
+        finally:
+            db.close()
+            
+    def with_db_session(func: Callable[..., T]) -> Callable[..., T]:
+        """数据库会话装饰器"""
+        def wrapper(self, *args, **kwargs):
+            with self.get_db_session() as db:
+                return func(self, db, *args, **kwargs)
+        return wrapper
 

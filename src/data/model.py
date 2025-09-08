@@ -72,6 +72,30 @@ class TaskResponse(BaseModel):
             )
 
 class ActiveTask(Base):
+    """
+    活跃任务模型
+    
+    用于记录当前正在执行或排队的任务状态信息。
+    通过task_id与Task表建立一对一关系，用于跟踪任务的实时状态。
+    
+    Attributes
+    ----------
+    task_id : str
+        任务ID，作为外键关联到tasks表的task_id字段，同时也是主键
+    start_time : datetime
+        任务开始执行的时间戳，由数据库自动生成
+    queued_time : datetime, optional
+        任务进入排队队列的时间戳，可为空
+    status : str
+        任务当前状态（如：pending, running, completed, failed等）
+    task : Task
+        关联的Task对象，通过SQLAlchemy relationship建立反向引用
+    
+    Notes
+    -----
+    该表与Task表形成一对一关系，通过task_id字段进行关联。
+    当任务完成或失败后，对应的ActiveTask记录通常会被删除。
+    """
     __tablename__ = "active_tasks"
     task_id = Column(String, ForeignKey("tasks.task_id"), primary_key=True)
     start_time = Column(DateTime, server_default=func.current_timestamp())
