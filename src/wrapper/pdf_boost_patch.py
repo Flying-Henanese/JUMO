@@ -7,9 +7,10 @@ import threading
 import os 
 import tempfile
 from loguru import logger
-from regex import F  # 添加这行导入
 
-CONCURRENCY = min(mp.cpu_count()//4,8)
+# 设置并行度，太多进程也不好
+CONCURRENCY = min(mp.cpu_count()//4, 8)
+
 # 全局进程池管理器
 class GlobalProcessPool:
     _instance = None
@@ -38,6 +39,7 @@ class GlobalProcessPool:
         if hasattr(self, 'executor'):
             self.executor.shutdown(wait=True)
 
+# 处理PDF
 def render_page_batch(pdf_path:str,page_index: int, pages:int, dpi: int) -> List[Dict]:
     logger.info(f"process: {os.getpid()} is processing from page_index:{page_index} for pages:{pages} dpi:{dpi}")
     pdf_doc = pdfium.PdfDocument(pdf_path)

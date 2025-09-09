@@ -11,11 +11,6 @@ class CacheService:
     def set(self, key: str, value: str, ex: Optional[int] = None) -> None:
         self._client.set(key, value, ex=ex)
 
-    # def get(self, key: str) -> Optional[str]:
-    #     val = self._client.get(key)
-    #     if val is None:
-    #         return None
-    #     return val.decode() if isinstance(val, bytes) else val
     
     def get(self, key):
         raw = self._client.get(key)  # bytes or None
@@ -33,8 +28,6 @@ class CacheService:
                 return text
             except UnicodeDecodeError:
                 return raw  # 或者 raise 异常根据业务需求
-
-
 
     def delete(self, key: str) -> None:
         self._client.delete(key)

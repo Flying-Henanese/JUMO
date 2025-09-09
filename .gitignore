@@ -7,3 +7,4 @@ logs/
 database/mineru
 backup/
 kernel_meta/
+poetry.lock

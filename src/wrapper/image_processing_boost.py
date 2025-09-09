@@ -4,7 +4,7 @@ import numpy as np
 from utils.workers_threading_pool import ThreadPoolSingleton
 from mineru.utils.ocr_utils import OcrConfidence, calculate_is_angle,get_rotate_crop_image
 
-CONCURRENCY = cpu_count()
+CONCURRENCY = min(cpu_count()//2, 16)
 def get_ocr_result_list_parallel(ocr_res, useful_list, ocr_enable, new_image, lang, max_workers=8):
     ori_im = new_image.copy()
     # 按 batch_size 划分参数列表

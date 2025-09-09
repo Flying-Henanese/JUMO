@@ -11,7 +11,7 @@ import threading
 from loguru import logger
 
 
-DEVICE_MODE = os.getenv("DEVICE_MODE", "cuda:5") # 默认使用CPU进行计算
+DEVICE_MODE = os.getenv("DEFAULT_CUDA_DEVICE", "0") # 默认使用CPU进行计算
 # 确保 punkt_tab 可用
 # 首先检测是否已存在punkt_tab模型
 # 如果加载失败，尝试下载
@@ -37,7 +37,7 @@ class SingletonSentenceTransformer:
                 if mirror:
                     os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
                 print(f"正在加载模型：{model_id}（mirror={mirror}）…")
-                cls._instance = SentenceTransformer(model_id, device=device)
+                cls._instance = SentenceTransformer(model_id, device=f'cuda:{device}')
                 print("模型加载完成。")
         return cls._instance
 
@@ -314,3 +314,20 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
         result.pop()
 
     return '\n'.join(result)
+
+
+# region
+# 测试代码
+if __name__ == "__main__":
+    markdown_file = "test.md"
+    with open(markdown_file, 'r', encoding='utf-8') as f:
+        md_text = f.read()
+    processed_md = process_markdown(md_text, max_length=500) 
+    print(processed_md)
+    import subprocess
+    out_file = "processed_test.md"
+    with open(out_file, 'w', encoding='utf-8') as f:
+        f.write(processed_md)    
+    print(f'处理后的markdown文件已保存到{out_file},现在来看看效果')
+    subprocess.run(['open',out_file])
+# endregion
