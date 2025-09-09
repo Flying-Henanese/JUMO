@@ -15,4 +15,4 @@ if __name__ == "__main__":
     app.include_router(pdf_router)
     app.include_router(documents_router)
     logger.info("启动FastAPI服务，监听端口8000")
-    uvicorn.run(app, host="0.0.0.0", port=5116)
+    uvicorn.run(app, host="0.0.0.0", port=5555)
