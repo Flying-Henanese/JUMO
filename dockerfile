@@ -46,7 +46,7 @@ ENV HF_ENDPOINT=https://hf-mirror.com
 # 在这设置mineru使用过哪个GPU，vlm模式在sglang_server_restart启动脚本设置
 ENV MINERU_DEVICE_MODE=cuda:0
 # 语义切分模型所使用的GPU设备编号
-ENV DEFAULT_CUDA_DEVICE=cuda:0
+ENV DEFAULT_CUDA_DEVICE=0
 
 # 暴露端口
 EXPOSE 8000
