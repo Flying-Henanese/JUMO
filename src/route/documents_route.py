@@ -5,6 +5,8 @@ pdf_route.py
 """
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
+import io
 from minio.error import S3Error
 from startup import minio_tool
 from typing import Optional
@@ -16,6 +18,7 @@ from processor.converters.excel_to_markdown import excel_to_markdown
 from processor.converters.doc_to_markdown import doc_to_markdown
 from processor.markdown_splitter import process_markdown as split_markdown
 from pydantic import BaseModel
+from fastapi import File, UploadFile
 # 实例化资源
 router = APIRouter()
 UPLOAD_BUCKET = os.getenv('UPLOAD_BUCKET', 'uploads')
@@ -107,3 +110,63 @@ def analyze_document(
             data=None
         )
 
+
+@router.post("/upload-analyze-office-file")
+def upload_analyze_office_file(
+    file: UploadFile = File(...),
+    header_row_number: int = 1,
+    key_columns: list[int] = [1]
+):
+    try:
+        file_name, file_ext = os.path.splitext(file.filename)
+        markdown_content = ""
+
+        if file_ext in WORD_EXTENTIONS:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp:
+                tmp.write(file.file.read())
+                tmp_path = tmp.name  # 临时文件路径
+            # 分析word文档
+                markdown_content = split_markdown(
+                        doc_to_markdown(
+                        input_data=tmp_path,  # 传本地路径
+                        task_id=file_name,
+                        bucket="output"
+                    )
+                )
+            os.remove(tmp_path)
+        elif file_ext in EXCEL_EXTENTIONS:
+            markdown_content = ''.join(excel_to_markdown(
+                excel_content=file.file,
+                file_name=file_name,
+                is_csv=file_ext == '.csv',
+                header_row_number=header_row_number,
+                key_columns=key_columns
+            ))
+        else:
+            raise HTTPException(status_code=400, detail="不支持的文件类型")
+
+        # 将 Markdown 内容写到内存中
+        md_bytes = io.BytesIO(markdown_content.encode("utf-8"))
+        md_bytes.seek(0)
+
+        # 直接返回内存文件
+        return StreamingResponse(
+            md_bytes,
+            media_type="text/markdown",
+            headers={
+                "Content-Disposition": f'attachment; filename="{file_name}.md"'
+            }
+        )
+
+    except S3Error as e:
+        return AnalyzeResponse(
+            status="error",
+            message=f"MinIO错误: {str(e)}",
+            data=None
+        )
+    except Exception as e:
+        return AnalyzeResponse(
+            status="error",
+            message=f"处理文件时出错: {str(e)}",
+            data=None
+        )

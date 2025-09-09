@@ -32,13 +32,13 @@ mineru.backend.pipeline.para_split.__merge_2_list_blocks = safe_merge_2_list_blo
 mineru.backend.pipeline.para_split.__merge_2_text_blocks = safe_merge_2_text_blocks
 # 配置huggingface的地址
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
+
 # 新版的mineru好像已经不在需要配置文件了
 # os.environ['MINERU_TOOLS_CONFIG_JSON'] = 'config/mineru.json'
 # 从国内的modelscope下载模型，避免huggingface无法访问的问题
 os.environ['MINERU_MODEL_SOURCE'] = 'modelscope'
 os.environ['MINERU_CONFIG_DIR'] = './config/'
 os.environ['MINERU_DEVICE_MODE'] = f'cuda:{os.getenv("DEFAULT_CUDA_DEVICE", "0")}'
-os.environ['CUDA_VISIBLE_DEVICES'] = '5'
 from processor.vlm_mode import PDFProcessor
 from processor.converters.table_to_markdown import patch_batchanalyze_output_to_markdown    
 # 新版的mineru好像已经不在需要配置文件了
