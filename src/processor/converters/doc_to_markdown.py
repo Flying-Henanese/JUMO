@@ -68,7 +68,7 @@ def remove_toc(doc: DoclingDocument) -> DoclingDocument:
     # --- 遍历 item 树并收集待删除项 ---
     # iterate_items() 的返回值形式可能是 item 或 (stack, item)，两种都兼容
     items_to_delete = []
-    for it in doc.iterate_items():
+    for it in doc.iterate_items():# 这里除了返回item，还会有一个len(stack)，就是文档树的深度
         # 提取item 
         # 因为item的类型可能集合，也有可能是单个对象
         # 所以对于集合就提取第一个元素，对于单个对象就直接使用
@@ -99,6 +99,10 @@ def insert_images_to_markdown(doc:DoclingDocument,markdown_content:str,task_id:s
     # 遍历文档中的图片
     for node,_ in doc.iterate_items():
         # 检查节点标签是否为图片
+        # 这里其实就是把node作为pydantic模型进行序列化处理进而转换成一个dict字典
+        # 然后检查是否有属性label
+        # 使用字典可以避免因为属性不存在而导致的错误
+        # 还有一个点就是node是一个docling文档节点，他不一定有label对象
         if node.model_dump().get("label") == DocItemLabel.PICTURE:
             # 获取图片引用
             image_ref = node.model_dump().get("image")
