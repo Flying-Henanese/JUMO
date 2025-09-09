@@ -11,7 +11,7 @@ import threading
 from loguru import logger
 
 
-DEVICE_MODE = os.getenv("DEVICE_MODE", "cuda:5") # 默认使用CPU进行计算
+DEVICE_MODE = os.getenv("DEVICE_MODE", "cuda:0") # 默认使用CPU进行计算
 # 确保 punkt_tab 可用
 # 首先检测是否已存在punkt_tab模型
 # 如果加载失败，尝试下载
@@ -34,6 +34,7 @@ class SingletonSentenceTransformer:
                 if mirror:
                     os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
                 print(f"正在加载模型：{model_id}（mirror={mirror}）…")
+                print("CUDA_VISIBLE_DEVICES = ", os.environ.get("CUDA_VISIBLE_DEVICES"))
                 cls._instance = SentenceTransformer(model_id, device=device)
                 print("模型加载完成。")
         return cls._instance
@@ -146,7 +147,7 @@ def find_best_num_clusters(embeddings, min_clusters=2, max_clusters=10):
     return best_k
 
 
-def semantic_chunking_with_auto_clusters(text, max_chunk_size=800, model_path="./models/bge-small-zh-v1.5"):
+def semantic_chunking_with_auto_clusters(text, max_chunk_size=800, model_id="BAAI/bge-small-zh-v1.5"):
     """
     自动选择最佳簇数的语义切分
     """
@@ -156,7 +157,7 @@ def semantic_chunking_with_auto_clusters(text, max_chunk_size=800, model_path=".
         return [text.strip()]
 
     # Step 2: 向量化
-    model = get_bge_sentence_transformer_singleton(model_path)
+    model = get_bge_sentence_transformer_singleton(model_id=model_id)
     embeddings = model.encode(sentences)
 
     # Step 3: 自动选择最佳簇数
