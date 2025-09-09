@@ -18,9 +18,9 @@ RUN sudo apt update && \
     sudo update-locale LANG=zh_CN.UTF-8 && \
     sudo apt clean
 # 这里要添加一步安装RUST编译器
-# RUN apt-get update && apt-get install -y rustc cargo
+RUN apt-get update && apt-get install -y rustc cargo
 # 还要安装OPENSSL开发库
-# RUN apt-get update && apt-get install -y libssl-dev pkg-config
+RUN apt-get update && apt-get install -y libssl-dev pkg-config
 
 # 设置工作目录
 WORKDIR /app
@@ -41,11 +41,19 @@ COPY . .
 
 # 设置环境变量
 ENV MINERU_MODEL_SOURCE=modelscope
-ENV MINERU_CONFIG_DIR=/app/config/
-ENV CUDA_VISIBLE_DEVICES=0
+ENV CUDA_VISIBLE_DEVICES=0,1,2,3
+ENV HF_ENDPOINT=https://hf-mirror.com
+# 在这设置mineru使用过哪个GPU，vlm模式在sglang_server_restart启动脚本设置
+ENV MINERU_DEVICE_MODE=cuda:0
+# 语义切分模型所使用的GPU设备编号
+ENV DEFAULT_CUDA_DEVICE=cuda:0
 
 # 暴露端口
 EXPOSE 8000
 
 # 启动命令（使用虚拟环境中的Python）
-CMD ["/app/.venv/bin/python", "src/app.py"]
+# 启动sglang服务（后台运行）
+RUN nohup /app/.venv/bin/mineru-sglang-server --port 30000 --model-path "OpenDataLab/MinerU2.0-2505-0.9B" > /app/mineru_sglang_server.log 2>&1 &
+
+# 启动主服务
+CMD ["/app/.venv/bin/python", "src/mineru_service.py"]
