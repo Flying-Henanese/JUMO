@@ -8,3 +8,11 @@ database/mineru
 backup/
 kernel_meta/
 poetry.lock
+
+# Python cache directories
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution directories
+dist/

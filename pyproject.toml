@@ -139,9 +139,10 @@ pytest = "^8.4.2"
 
 [tool.poetry]
 include = [
-    "config/magic-pdf.json"
+    "config/magic-pdf.json",
+    ".env",
 ]
-package-mode = false
+package-mode = true
 
 [[tool.poetry.source]]
 name = "tsinghua"
