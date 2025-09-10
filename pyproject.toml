@@ -1,6 +1,6 @@
 [project]
 name = "mineru-service"
-version = "0.1.0"
+version = "0.7.0"
 description = "将minerU封装可以远程调用的API服务, 供其他应用调用"
 authors = [
     {name = "ZHOU shujian"}
@@ -109,7 +109,6 @@ dependencies = [
     "tokenizers (>=0.21.2,<0.22.0)",
     "shapely (>=2.1.1,<3.0.0)",
     "transformers (>=4.53.0,<5.0.0)",
-    "sglang (>=0.4.8.post1,<0.5.0)",
     "beautifulsoup4 (>=4.13.4,<5.0.0)",
     "markdown-it-py (>=3.0.0,<4.0.0)",
     "docling (>=2.43.0,<3.0.0)",
@@ -122,6 +121,7 @@ dependencies = [
     "redislite (>=6.2.912183,<7.0.0)",
     "ray[serve] (>=2.49.0,<3.0.0)",
     "html-to-markdown (>=1.9.1,<2.0.0)",
+    "stringzilla (>=3.12.6,<4.0.0)",
 ]
 
 
