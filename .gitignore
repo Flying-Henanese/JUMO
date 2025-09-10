@@ -8,3 +8,6 @@ database/mineru
 backup/
 kernel_meta/
 poetry.lock
+
+dist/
+**/__pycache__/
