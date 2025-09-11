@@ -2,6 +2,7 @@ from concurrent.futures import ProcessPoolExecutor
 from typing import List, Dict, Tuple
 import pypdfium2 as pdfium
 from mineru.utils.pdf_image_tools import pdf_page_to_image
+from mineru.utils.enum_class import ImageType
 import multiprocessing as mp
 import threading
 import os 
@@ -46,7 +47,7 @@ def render_page_batch(pdf_path:str,page_index: int, pages:int, dpi: int) -> List
     all_pages = []
     for i in range(page_index, page_index + pages):
         page = pdf_doc[i]
-        all_pages.append(pdf_page_to_image(page, dpi=dpi))
+        all_pages.append(pdf_page_to_image(page, dpi=dpi, image_type=ImageType.PIL))
     pdf_doc.close()  # 确保关闭文档
     return all_pages
 
@@ -58,7 +59,7 @@ def write_temp_pdf(pdf_bytes: bytes) -> str:
     return pdf_path
 
 # 使用全局进程池
-def load_images_from_pdf(pdf_bytes, start_page_id=0, end_page_id=None, dpi=200):
+def load_images_from_pdf(pdf_bytes, start_page_id=0, end_page_id=None, dpi=200, image_type = ImageType.PIL):
     pdf_path = write_temp_pdf(pdf_bytes)
     pdf_doc = pdfium.PdfDocument(pdf_path)
     total_pages = len(pdf_doc)
