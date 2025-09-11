@@ -1,7 +1,7 @@
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine, delete
 from data.model import Task, ActiveTask, TaskResponse
-from typing import List, Optional
+from typing import List, Optional, TypeVar
 from data.schema import ActiveTaskCreate
 from data.model import Base
 from const.task_status_enum import TaskStatus
@@ -12,6 +12,9 @@ from contextlib import contextmanager
 from typing import Callable
 
 from wrapper.logger import log_with_time_consumption
+
+# 添加类型变量定义
+T = TypeVar('T')
 
 class TaskRepository:
     """

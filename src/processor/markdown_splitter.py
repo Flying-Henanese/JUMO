@@ -285,7 +285,7 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
                 i += 1
             i += 1  # skip table_close
             current_content.append('\n'.join(table_lines))
-            flush_content(is_table=True)
+            flush_content(special_element='Table')
             continue
 
         # 段落内容
