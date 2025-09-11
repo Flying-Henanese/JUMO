@@ -281,36 +281,3 @@ class TaskRepository:
         finally:
             db.close()
     
-    @contextmanager 
-    def get_db_session(self):
-        """
-        数据库会话上下文管理器
-        
-        用于在with语句块中自动管理数据库会话的创建、提交和回滚。
-        确保在块结束时是否提交事务，以及在发生异常时是否回滚。
-        
-        - yield 之前的部分相当于 __enter__ 方法，在进入 with 语句块时执行
-        - yield 之后的部分相当于 __exit__ 方法，在退出 with 语句块时执行
-        
-        Yields
-        ------
-        Session
-            数据库会话对象，用于执行数据库操作。
-        """
-        db = self.SessionLocal()
-        try:
-            yield db
-            db.commit()
-        except Exception as e:
-            db.rollback()
-            raise e
-        finally:
-            db.close()
-            
-    def with_db_session(func: Callable[..., T]) -> Callable[..., T]:
-        """数据库会话装饰器"""
-        def wrapper(self, *args, **kwargs):
-            with self.get_db_session() as db:
-                return func(self, db, *args, **kwargs)
-        return wrapper
-
