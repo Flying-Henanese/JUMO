@@ -147,7 +147,7 @@ include = [
 package-mode = true
 
 [[tool.poetry.source]]
-name = "tsinghua"
+name = "aliyun"
 url = "https://mirrors.aliyun.com/pypi/simple/"
 
 
