@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union, Any
 import pickle
 from .redis_client import RedisClient  # 只导入类
 from utils.singleton import thread_safe_singleton
@@ -11,8 +11,7 @@ class CacheService:
     def set(self, key: str, value: str, ex: Optional[int] = None) -> None:
         self._client.set(key, value, ex=ex)
 
-    
-    def get(self, key):
+    def get(self, key: str) -> Union[Any, int, str, bytes, None]:
         raw = self._client.get(key)  # bytes or None
         if raw is None:
             return None

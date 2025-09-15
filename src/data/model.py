@@ -56,7 +56,7 @@ class TaskResponse(BaseModel):
     output_info:Optional[dict]
 
     @classmethod
-    def from_orm(cls,task):
+    def from_orm(cls,task:Task):
         '''从orm模型转换为响应模型'''
         is_completed = False
         try:

@@ -3,7 +3,7 @@ from sqlalchemy import create_engine, delete
 from data.model import Task, ActiveTask, TaskResponse
 from typing import List, Optional, TypeVar
 from data.schema import ActiveTaskCreate
-from data.model import Base
+from data.model import Base # 引入Base模型类
 from const.task_status_enum import TaskStatus
 from fastapi import HTTPException
 from loguru import logger

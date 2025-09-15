@@ -2,7 +2,6 @@ from docling.document_converter import DocumentConverter
 from docling_core.types.doc import DoclingDocument, DocItemLabel
 import os
 import re
-from docling_core.types.doc import DoclingDocument
 from startup import minio_tool
 from PIL import Image
 
