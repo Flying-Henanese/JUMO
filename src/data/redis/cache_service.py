@@ -6,7 +6,7 @@ from utils.singleton import thread_safe_singleton
 @thread_safe_singleton
 class CacheService:
     def __init__(self):  # 直接使用类名
-        self._client = RedisClient().get_client()
+        self._client: Union[redis.Redis, EmbeddedRedis] = RedisClient().get_client()
 
     def set(self, key: str, value: str, ex: Optional[int] = None) -> None:
         self._client.set(key, value, ex=ex)

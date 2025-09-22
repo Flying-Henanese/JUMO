@@ -38,6 +38,8 @@ from processor.converters.table_to_markdown import patch_batchanalyze_output_to_
 
 # 新版的mineru好像已经不在需要配置文件了
 # os.environ['MINERU_TOOLS_CONFIG_JSON'] = 'config/mineru.json'
+# 配置huggingface镜像站，以免有些模型只能从huggingface下载
+os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 # 从国内的modelscope下载模型，避免huggingface无法访问的问题
 os.environ['MINERU_MODEL_SOURCE'] = 'modelscope'
 os.environ['MINERU_DEVICE_MODE'] = 'mps:0'

@@ -1,5 +1,8 @@
 from docling.document_converter import DocumentConverter
 from docling_core.types.doc import DoclingDocument, DocItemLabel
+from docling.datamodel.base_models import InputFormat
+from docling.datamodel.pipeline_options import PaginatedPipelineOptions
+from docling.document_converter import WordFormatOption
 import os
 import re
 from startup import minio_tool
@@ -9,28 +12,42 @@ from PIL import Image
 转换word文档为markdown格式(基于docling实现)
 """
 
-def doc_to_markdown(input_data : str,task_id:str,bucket:str) -> str:
+def doc_to_markdown(
+    input_data : str,
+    task_id:str = "no_specific_task_id",
+    bucket:str = None
+    ) -> str:
     """
     将 Word 文档（.docx）转换为 Markdown，支持文件路径输入，保留表格、图片和标题层级。
     :param input_data: 文件路径（str）
     :return: 转换后的 Markdown 文本
     """
-    # 生成一个文档转换器
-    converter = DocumentConverter()
+    # 配置DOCX管道选项以正确处理表格结构
+    docx_pipeline_options = PaginatedPipelineOptions()
+    
+    # 配置DOCX管道选项以正确处理文档分页结构
+    converter = DocumentConverter(
+        format_options={
+            InputFormat.DOCX: WordFormatOption(pipeline_options=docx_pipeline_options),
+        }
+    )
     # 转换文档为 DoclingDocument对象
     result = converter.convert(input_data)
     # 对result.document进行处理,去除目录信息
     # 然后输出为markdown格式
-    md_content = remove_toc(result.document).export_to_markdown()
+    processed_doc = _remove_toc(result.document)
+    # 处理caption与表格/图片的合并,失败了，以后再完善吧
+    # processed_doc = _merge_captions_with_content(processed_doc)
+    md_content = processed_doc.export_to_markdown()
     # 把文档中的图片提取出来
     # 1. 首先放入minio中
     # 2. 把所有图片的url替换为minio中的url,用于后续前端应用读取图片进行渲染
-    md_content = insert_images_to_markdown(result.document,md_content,task_id,bucket)
+    md_content = _insert_images_to_markdown(processed_doc,md_content,task_id,bucket)
     # 最后使用process_markdown进行切分
     return md_content
 
 
-def remove_toc(doc: DoclingDocument) -> DoclingDocument:
+def _remove_toc(doc: DoclingDocument) -> DoclingDocument:
     """
     从 DoclingDocument 中删除目录（TOC）相关的 items。
     通过两类信号识别：
@@ -87,7 +104,12 @@ def remove_toc(doc: DoclingDocument) -> DoclingDocument:
     return doc
 
 
-def insert_images_to_markdown(doc:DoclingDocument,markdown_content:str,task_id:str,bucket:str) -> str:
+def _insert_images_to_markdown(
+    doc:DoclingDocument,
+    markdown_content:str,
+    task_id:str = "no_specific_task_id",
+    bucket:str = None
+    ) -> str:
     """
     插入文档中的图片到Markdown内容中
     :param doc: DoclingDocument对象
@@ -114,6 +136,8 @@ def insert_images_to_markdown(doc:DoclingDocument,markdown_content:str,task_id:s
                     image_path = os.path.join(task_id, image_filename)
                     image_counter += 1
                     # 上传图片到minio
+                    if not bucket:
+                        continue
                     minio_tool.upload_file_by_bytes(
                         object_name=image_path,
                         bucket_name=bucket,
@@ -123,6 +147,86 @@ def insert_images_to_markdown(doc:DoclingDocument,markdown_content:str,task_id:s
                     placeholder = "<!-- image -->"
                     markdown_content = markdown_content.replace(placeholder, f"![]({image_path})", 1)
     return markdown_content
+
+def _merge_captions_with_content(doc: DoclingDocument) -> DoclingDocument:
+    """
+    将caption元素与其对应的表格或图片合并，形成带标题的内容块。
+    优化版本：基于文档顺序进行单次遍历匹配。
+    
+    :param doc: DoclingDocument对象
+    :return: 处理后的DoclingDocument对象
+    """
+    items_to_delete = []
+    items_list = list(doc.iterate_items())
+    
+    # 单次遍历，基于位置关系匹配caption与内容
+    for i, item in enumerate(items_list):
+        node = item[0] if isinstance(item, (tuple, list)) else item
+        node_data = node.model_dump()
+        label = node_data.get("label")
+        
+        # 如果当前元素是表格或图片，寻找相邻的caption
+        if label in [DocItemLabel.TABLE, DocItemLabel.PICTURE]:
+            caption_node = None
+            caption_text = ""
+            
+            # 向前查找caption（caption通常在内容之前）
+            for j in range(i-1, max(-1, i-3), -1):  # 最多向前查找2个元素
+                if j < 0:
+                    break
+                prev_item = items_list[j]
+                prev_node = prev_item[0] if isinstance(prev_item, (tuple, list)) else prev_item
+                prev_label = prev_node.model_dump().get("label")
+                
+                if prev_label == DocItemLabel.CAPTION:
+                    caption_node = prev_node
+                    caption_text = getattr(prev_node, 'text', '')
+                    break
+                elif prev_label in [DocItemLabel.TABLE, DocItemLabel.PICTURE]:
+                    # 如果遇到其他内容元素，停止查找
+                    break
+            
+            # 如果前面没找到，向后查找caption（有些caption可能在内容之后）
+            if not caption_node:
+                for j in range(i+1, min(len(items_list), i+3)):  # 最多向后查找2个元素
+                    if j >= len(items_list):
+                        break
+                    next_item = items_list[j]
+                    next_node = next_item[0] if isinstance(next_item, (tuple, list)) else next_item
+                    next_label = next_node.model_dump().get("label")
+                    
+                    if next_label == DocItemLabel.CAPTION:
+                        caption_node = next_node
+                        caption_text = getattr(next_node, 'text', '')
+                        break
+                    elif next_label in [DocItemLabel.TABLE, DocItemLabel.PICTURE]:
+                        # 如果遇到其他内容元素，停止查找
+                        break
+            
+            # 如果找到了匹配的caption，进行合并
+            if caption_node and caption_text:
+                print(f"合并caption: {caption_text} 与 内容: {node.model_dump().get('text', '')}")
+                try:
+                    # 尝试将caption文本添加到内容项中
+                    if hasattr(node, 'text'):
+                        original_text = getattr(node, 'text', '')
+                        combined_text = f"**{caption_text}**\n\n{original_text}"
+                        setattr(node, 'text', combined_text)
+                    elif hasattr(node, 'caption'):
+                        setattr(node, 'caption', caption_text)
+                    
+                    # 标记caption节点为待删除
+                    items_to_delete.append(caption_node)
+                    
+                except (AttributeError, TypeError):
+                    # 如果无法直接修改，跳过
+                    pass
+    
+    # 删除已经合并的caption元素
+    if items_to_delete:
+        doc.delete_items(items_to_delete)
+    
+    return doc
 
 # region
 # 示例用法

@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 import io
 from minio.error import S3Error
 from startup import minio_tool
-from typing import Optional
+from typing import Optional, List
 from const.file_extensions import WORD_EXTENTIONS,EXCEL_EXTENTIONS
 # 为了让接口返回压缩包
 import os
@@ -18,7 +18,32 @@ from processor.converters.excel_to_markdown import excel_to_markdown
 from processor.converters.doc_to_markdown import doc_to_markdown
 from processor.markdown_splitter import process_markdown as split_markdown
 from pydantic import BaseModel
+from loguru import logger
 from fastapi import File, UploadFile
+import urllib.parse
+
+
+def ensure_utf8_string(content) -> str:
+    """确保内容是UTF-8字符串"""
+    if isinstance(content, bytes):
+        return content.decode('utf-8', errors='replace')
+    elif isinstance(content, str):
+        try:
+            content.encode('utf-8')
+            return content
+        except UnicodeEncodeError:
+            return content.encode('latin-1', errors='ignore').decode('utf-8', errors='replace')
+    return str(content)
+
+
+def safe_filename_for_header(filename: str) -> str:
+    """为HTTP头部生成安全的文件名"""
+    try:
+        filename.encode('ascii')
+        return f'attachment; filename="{filename}"'
+    except UnicodeEncodeError:
+        encoded_filename = urllib.parse.quote(filename, safe='')
+        return f"attachment; filename*=UTF-8''{encoded_filename}"
 # 实例化资源
 router = APIRouter()
 UPLOAD_BUCKET = os.getenv('UPLOAD_BUCKET', 'uploads')
@@ -26,7 +51,7 @@ UPLOAD_BUCKET = os.getenv('UPLOAD_BUCKET', 'uploads')
 class AnalyzeResult(BaseModel):
     markdown_url: str
     markdown_content: str
-    images: Optional[list[str]] = None
+    images: Optional[List[str]] = None
 
 # 定义接口的返回体
 class AnalyzeResponse(BaseModel):
@@ -67,14 +92,14 @@ def analyze_document(
             ) as temp_file:
                 temp_file.write(file_content)
                 temp_file_path = temp_file.name
-                markdown_content = split_markdown(
-                    # 先将word文档转换为markdown
-                    doc_to_markdown(
-                        input_data = temp_file_path,
-                        task_id = file_name,
-                        bucket = output_bucket
-                        )
-                    )
+                # 获取markdown内容
+                raw_markdown = doc_to_markdown(
+                    input_data = temp_file_path,
+                    task_id = file_name,
+                    bucket = output_bucket
+                )
+                raw_markdown = ensure_utf8_string(raw_markdown)
+                markdown_content = split_markdown(raw_markdown)
         elif file_ext in EXCEL_EXTENTIONS:
             # 分析excel文件
             markdown_content = ''.join(excel_to_markdown(file_content))
@@ -82,12 +107,15 @@ def analyze_document(
             raise HTTPException(status_code=400, detail="不支持的文件类型")
 
         # 上传到minio
+        markdown_content = ensure_utf8_string(markdown_content)
+        markdown_bytes = markdown_content.encode('utf-8')
+        
         minio_tool.upload_file_by_bytes(
             bucket_name=output_bucket, 
             object_name=f'{file_name}/{file_name}.md', 
-            file_bytes=markdown_content.encode('utf-8'),
-            content_type='text/markdown'
-            )
+            file_bytes=markdown_bytes,
+            content_type='text/markdown; charset=utf-8'
+        )
             
         return AnalyzeResponse(
             status="success",
@@ -115,7 +143,7 @@ def analyze_document(
 def upload_analyze_office_file(
     file: UploadFile = File(...),
     header_row_number: int = 1,
-    key_columns: list[int] = [1]
+    key_columns: List[int] = [1]
 ):
     try:
         file_name, file_ext = os.path.splitext(file.filename)
@@ -126,13 +154,14 @@ def upload_analyze_office_file(
                 tmp.write(file.file.read())
                 tmp_path = tmp.name  # 临时文件路径
             # 分析word文档
-                markdown_content = split_markdown(
-                        doc_to_markdown(
-                        input_data=tmp_path,  # 传本地路径
-                        task_id=file_name,
-                        bucket="output"
-                    )
+                # 获取markdown内容
+                raw_markdown = doc_to_markdown(
+                    input_data=tmp_path,  # 传本地路径
+                    task_id=file_name,
+                    bucket="output"
                 )
+                raw_markdown = ensure_utf8_string(raw_markdown)
+                markdown_content = split_markdown(raw_markdown)
             os.remove(tmp_path)
         elif file_ext in EXCEL_EXTENTIONS:
             markdown_content = ''.join(excel_to_markdown(
@@ -146,15 +175,19 @@ def upload_analyze_office_file(
             raise HTTPException(status_code=400, detail="不支持的文件类型")
 
         # 将 Markdown 内容写到内存中
-        md_bytes = io.BytesIO(markdown_content.encode("utf-8"))
+        markdown_content = ensure_utf8_string(markdown_content)
+        markdown_bytes = markdown_content.encode('utf-8')
+        md_bytes = io.BytesIO(markdown_bytes)
         md_bytes.seek(0)
 
         # 直接返回内存文件
+        content_disposition = safe_filename_for_header(f"{file_name}.md")
+        
         return StreamingResponse(
             md_bytes,
             media_type="text/markdown",
             headers={
-                "Content-Disposition": f'attachment; filename="{file_name}.md"'
+                "Content-Disposition": content_disposition
             }
         )
 

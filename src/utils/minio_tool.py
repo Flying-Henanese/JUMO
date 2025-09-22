@@ -43,6 +43,29 @@ class MinioConnection:
             secure=secure
         )
         logger.info(f"初始化Minio连接: endpoint={endpoint}")
+        
+        # 检查并创建默认的bucket
+        # 确保用于上传文件的bucket存在，如果不存在则创建
+        self._ensure_default_buckets()
+
+    def _ensure_default_buckets(self):
+        """防御性编程，确保默认的用于上传分析文件和存储桶存在，如果不存在则创建"""
+        default_buckets = [
+            os.getenv('UPLOAD_BUCKET', 'uploads'),    # 上传文件bucket
+            os.getenv('MINIO_OUTPUT_BUCKET', 'output') # 输出文件bucket
+        ]
+        
+        for bucket_name in default_buckets:
+            try:
+                if not self.client.bucket_exists(bucket_name):
+                    self.client.make_bucket(bucket_name=bucket_name)
+                    logger.info(f"创建默认存储桶: {bucket_name}")
+                else:
+                    logger.debug(f"存储桶已存在: {bucket_name}")
+            except Exception as e:
+                logger.error(f"检查/创建默认存储桶失败: {bucket_name}, 错误: {e}")
+                # 继续尝试其他bucket，不中断初始化
+                continue
 
     def upload_file_by_path(self, object_name: str, bucket_name:str, file_path: str) -> bool:
         """
@@ -69,12 +92,20 @@ class MinioConnection:
             """
             上传文件字节流到OSS成为一个文件
             """
+            # 确保 file_bytes 是 bytes 类型
+            if isinstance(file_bytes, str):
+                file_bytes = file_bytes.encode('utf-8')
+            elif not isinstance(file_bytes, bytes):
+                raise ValueError(f"file_bytes 必须是 bytes 或 str 类型，当前类型: {type(file_bytes)}")
+            
             self.client.put_object(
                 bucket_name=bucket_name,
                 object_name=object_name,
                 data=io.BytesIO(file_bytes),
-                length=len(file_bytes)
+                length=len(file_bytes),
+                content_type=content_type
             )
+            logger.info(f"文件上传成功: bucket:{bucket_name};object_name:{object_name}")
             return True
         except Exception as e:
             logger.error(f"文件上传失败: bucket:{bucket_name};object_name:{object_name}, 异常：{e}")

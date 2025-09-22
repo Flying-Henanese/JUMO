@@ -16,7 +16,6 @@ from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.enum_class import MakeMode
 
 from data.model import Task
-from wrapper.gpu_patch import with_gpu_selection
 from wrapper.logger import log_with_time_consumption
 from utils.minio_tool import MinioConnection
 from const.file_extensions import OFFICE_EXTENSIONS, PDF_EXTENSIONS,IMAGE_EXTENSIONS

@@ -207,19 +207,25 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
     md = MarkdownIt("commonmark").enable('table')
     md.use(dollarmath_plugin,allow_space=True,allow_digits=True)
     tokens = md.parse(md_text)
+    
+    # 预先计算原始文本的行数组，避免在循环中重复计算
+    original_lines = md_text.split('\n')
+    
+    # 整篇文章的分段放在这里
     result = []
+    # 当前正在处理的段落内容
     current_content = []
     title_stack = [""] * 6  # h1-h6
 
     def get_title_path():
         """
-        获取当前标题路径
+        获取当前标题路径（用于生成聚合标题）
         """
         return '|'.join([t for t in title_stack if t])
 
     def get_current_level():
         """
-        获取当前标题层级
+        获取当前标题层级（找到最高级的非空标题）
         """
         for i in range(5, -1, -1):
             if title_stack[i]:
@@ -229,6 +235,8 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
     def flush_content(special_element=None):
         """
         检查是否还有待处理内容
+        如果有内容，则把这一段放到result中
+        形成一个标题+内容的段落
         """
         if not current_content:
             return
@@ -257,6 +265,7 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
                 header = f"{'#' * level} {title_path}" if title_path else ""
                 if header:
                     result.append(header)
+                    result.append("")  # 添加空行分隔标题和内容
                 result.extend([content, "-" * 10])
         current_content.clear()
 
@@ -265,27 +274,65 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
         token = tokens[i]
         # 标题处理
         if token.type == "heading_open":
-            flush_content()
-            level = int(token.tag[1])
-            inline_token = tokens[i + 1]
-            if inline_token.type == "inline":
-                title_stack[level - 1] = inline_token.content.strip()
+            flush_content()# 因为这是一个新的标题，所以要先把此前的内容放到result中
+            level = int(token.tag[1]) # 是标题的HTML标签（如 h1 、 h2 ），通过取标签的第二个字符（数字部分）转换为整数，得到标题层级。
+            inline_token = tokens[i + 1] # 获取标题的内容
+            if inline_token.type == "inline": # 如果是inline类型，则提取其中的内容（标题的内容）
+                title_stack[level - 1] = inline_token.content.strip() # 把标题内容放在标题栈中
+                # 清空比当前标题更深的标题（可能是在上一个章节遗留下来的）
                 for j in range(level, 6):
                     title_stack[j] = ""
-            i += 3  # skip heading_open, inline, heading_close
+            i += 3  # skip heading_open, inline, heading_close，proceed to next block
             continue
 
         # 表格处理（整个复制）
         elif token.type == "table_open":
             flush_content()
-            table_lines = []
-            while i < len(tokens) and tokens[i].type != "table_close":
-                if tokens[i].type == "inline":
-                    table_lines.append(tokens[i].content)
-                i += 1
-            i += 1  # skip table_close
-            current_content.append('\n'.join(table_lines))
+            table_start = token.map[0] if token.map else 0
+            
+            # 找到表格结束token
+            table_end_token = None
+            j = i + 1
+            while j < len(tokens) and tokens[j].type != "table_close":
+                j += 1
+            
+            if j < len(tokens):
+                table_end_token = tokens[j]
+                # 如果table_close没有map信息，寻找下一个有map信息的token
+                if table_end_token.map and table_end_token.map[1]:
+                    table_end = table_end_token.map[1]
+                else:
+                    # 寻找table_close之后第一个有map信息的token
+                    table_end = None
+                    for k in range(j + 1, len(tokens)):
+                        if tokens[k].map and tokens[k].map[0] is not None:
+                            table_end = tokens[k].map[0]  # 使用下一个元素的开始位置
+                            break
+                    
+                    if table_end is None:
+                        # 如果还是找不到，使用启发式方法：从table_start开始向下扫描
+                        table_end = table_start + 1
+                        # 简单启发式：找到第一个空行或非表格行
+                        for line_idx in range(table_start, len(original_lines)):
+                            line = original_lines[line_idx].strip()
+                            if not line or not (line.startswith('|') or '|' in line):
+                                table_end = line_idx
+                                break
+            else:
+                # 没找到table_close，使用启发式方法
+                table_end = table_start + 1
+                for line_idx in range(table_start, len(original_lines)):
+                    line = original_lines[line_idx].strip()
+                    if not line or not (line.startswith('|') or '|' in line):
+                        table_end = line_idx
+                        break
+            
+            # 提取表格内容
+            table_content = '\n'.join(original_lines[table_start:table_end])
+            
+            current_content.append(table_content)
             flush_content(special_element='Table')
+            i = j + 1
             continue
 
         # 段落内容
@@ -301,6 +348,64 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
             current_content.append(f"```\n{token.content}\n```")
             i += 1
             continue
+            
+        # 有序列表处理
+        elif token.type == "ordered_list_open":
+            flush_content()
+            list_content = []
+            j = i + 1
+            list_item_counter = 1
+            
+            while j < len(tokens) and tokens[j].type != "ordered_list_close":
+                if tokens[j].type == "list_item_open":
+                    k = j + 1
+                    while k < len(tokens) and tokens[k].type != "list_item_close":
+                        if tokens[k].type == "paragraph_open" and k + 1 < len(tokens) and tokens[k + 1].type == "inline":
+                            list_content.append(f"{list_item_counter}. {tokens[k + 1].content.strip()}")
+                            list_item_counter += 1
+                        k += 1
+                j += 1
+            
+            if list_content:
+                current_content.extend(list_content)
+                flush_content(special_element=token.type)  # 立即处理列表内容
+            i = j + 1
+            continue
+            
+        # 无序列表处理
+        elif token.type == "bullet_list_open":
+            flush_content()
+            list_content = []
+            j = i + 1
+            
+            while j < len(tokens) and tokens[j].type != "bullet_list_close":
+                if tokens[j].type == "list_item_open":
+                    # 找到对应的inline token
+                    k = j + 1
+                    while k < len(tokens) and tokens[k].type != "list_item_close":
+                        if tokens[k].type == "paragraph_open" and k + 1 < len(tokens) and tokens[k + 1].type == "inline":
+                            list_content.append(f"- {tokens[k + 1].content.strip()}")
+                        k += 1
+                j += 1
+            
+            if list_content:
+                current_content.extend(list_content)
+                flush_content(special_element=token.type)  # 立即处理列表内容
+            i = j + 1
+            continue
+            
+        # HTML块处理
+        elif token.type == "html_block":
+            current_content.append(token.content.strip())
+            flush_content(special_element=token.type)  # 立即处理HTML块
+            i += 1
+            continue
+            
+        # 跳过列表相关的关闭标签（已在上面处理）
+        elif token.type in ["list_item_close", "ordered_list_close", "bullet_list_close", "list_item_open"]:
+            i += 1
+            continue
+            
         # 数学公式
         elif token.type == "math_block":
             flush_content()
@@ -311,9 +416,8 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
             continue
         # 其他内容
         else:
+            logger.warning(f"无法处理的token类型: {token.type}, 内容: {getattr(token, 'content', 'N/A')}")  # 添加调试信息
             i += 1
-
-    flush_content()
 
     if result and result[-1] == "-" * 10:
         result.pop()
@@ -324,15 +428,16 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
 # region
 # 测试代码
 if __name__ == "__main__":
-    markdown_file = "test.md"
-    with open(markdown_file, 'r', encoding='utf-8') as f:
-        md_text = f.read()
+    from .converters.doc_to_markdown import doc_to_markdown 
+    file = '/Users/zhoushujian/Downloads/运维.docx'
+    md_text = doc_to_markdown(file)
+    with open("original_运维.md", 'w', encoding='utf-8') as f:
+        f.write(md_text)
     processed_md = process_markdown(md_text, max_length=500) 
-    print(processed_md)
-    import subprocess
-    out_file = "processed_test.md"
+    # import subprocess
+    out_file = "processed_运维.md"
     with open(out_file, 'w', encoding='utf-8') as f:
         f.write(processed_md)    
-    print(f'处理后的markdown文件已保存到{out_file},现在来看看效果')
-    subprocess.run(['open',out_file])
+    # print(f'处理后的markdown文件已保存到{out_file},现在来看看效果')
+    # subprocess.run(['open',out_file])
 # endregion
