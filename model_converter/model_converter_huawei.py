@@ -1,9 +1,76 @@
 #!/usr/bin/env python3
 """
-批量将 .pt/.pth（旧格式）与 .safetensors 转为 PyTorch zip-serialization，
-并验证能否在 NPU 上加载。已是 zip 格式的 .pt/.pth 仅做验证。
-用法：
-  python convert_models_to_zip_npu.py --path <文件或目录>
+华为昇腾NPU模型转换工具
+
+功能说明：
+- 批量将 .pt/.pth（旧格式）与 .safetensors 转为 PyTorch zip-serialization 格式
+- 将 ONNX 模型转换为华为 OM 格式
+- 验证转换后的模型能否在 NPU 上正常加载
+- 已是 zip 格式的 .pt/.pth 文件仅做验证，不重复转换
+
+环境要求：
+- 华为 CANN 开发套件
+- torch_npu (昇腾PyTorch适配包)
+- acl (Ascend Computing Language)
+- safetensors 库
+- dill 库
+
+支持的模型格式：
+- .pt/.pth (PyTorch模型文件)
+- .safetensors (SafeTensors格式)
+- .onnx (ONNX模型文件)
+
+使用方法：
+
+1. 转换单个模型文件：
+   python model_converter_huawei.py --path /path/to/model.pt
+   python model_converter_huawei.py --path /path/to/model.safetensors
+   python model_converter_huawei.py --path /path/to/model.onnx
+
+2. 批量转换目录下所有支持的模型：
+   python model_converter_huawei.py --path /path/to/models_directory/
+
+3. 使用相对路径：
+   python model_converter_huawei.py --path ./models/
+   python model_converter_huawei.py --path ~/Downloads/model.pt
+
+输出说明：
+- ✅ 已是 zip: 文件已经是正确格式，无需转换
+- 🔄 转换 xxx → zip: 正在进行格式转换
+- 🎉 NPU 加载成功: 模型可以在NPU上正常加载
+- ❌ NPU 加载失败: 模型无法在NPU上加载
+- ⚠️ 目标文件已存在: 跳过已存在的转换结果
+- ⏭️ 跳过不支持格式: 文件格式不在支持范围内
+
+转换流程：
+1. 检测文件格式和当前状态
+2. 执行相应的转换操作
+3. 验证转换结果的格式正确性
+4. 在NPU设备上测试加载
+5. 输出处理结果和状态
+
+注意事项：
+- 转换过程中会创建临时文件，转换成功后会替换原文件
+- ONNX转换需要ATC工具，确保环境中已安装
+- 所有模型加载测试都在CPU上进行，不影响后续NPU推理
+- 支持递归处理目录中的所有模型文件
+
+示例输出：
+$ python model_converter_huawei.py --path ./models/
+🔄 转换 resnet50.pt → zip
+🎉 NPU 加载成功: resnet50.pt
+
+✅ 已是 zip: bert_model.pt
+🎉 NPU 加载成功: bert_model.pt
+
+🔄 转换 vision_transformer.safetensors → .pt (zip)
+🎉 NPU 加载成功: vision_transformer.pt
+
+🔄 ATC 转换 mobilenet.onnx → .om
+🚀 运行 ATC: atc --model=mobilenet.onnx --framework=5 ...
+🎉 OM 加载成功: mobilenet.om
+
+✅ 全部处理完成
 """
 import argparse, os, subprocess, importlib, dill
 from pathlib import Path
