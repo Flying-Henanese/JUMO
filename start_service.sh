@@ -9,8 +9,4 @@ if [ ! -z "$PID" ]; then
 fi
 
 # 使用nohup和poetry run启动服务，并将日志输出到output.log
-nohup poetry run python src/mineru_service.py > output.log 2>&1 &
-
-# 显示进程信息和日志文件路径
-echo "服务已启动，PID: $!"
-echo "日志输出到: /output.log"
+poetry run python src/mineru_service.py
