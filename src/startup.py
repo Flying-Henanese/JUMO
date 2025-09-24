@@ -36,20 +36,17 @@ from processor.pdf_processor import PDFProcessor
 # 所以需要进行转换
 from processor.converters.table_to_markdown import patch_batchanalyze_output_to_markdown    
 
-# 新版的mineru好像已经不在需要配置文件了
-# os.environ['MINERU_TOOLS_CONFIG_JSON'] = 'config/mineru.json'
 # 配置huggingface镜像站，以免有些模型只能从huggingface下载
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 # 从国内的modelscope下载模型，避免huggingface无法访问的问题
-#os.environ['MINERU_MODEL_SOURCE'] = 'modelscope'
-#os.environ['MINERU_CONFIG_DIR'] = './config/'
-# 使用vlm模式 这里其实就不用了
-# os.environ['MINERU_DEVICE_MODE'] = f'cuda:{os.getenv("DEFAULT_CUDA_DEVICE", "0")}'
+os.environ['MINERU_MODEL_SOURCE'] = 'modelscope'
+# 指定要使用的cuda设备的编号
+os.environ['MINERU_DEVICE_MODE'] = f'cuda:{os.getenv("DEFAULT_CUDA_DEVICE", "0")}'
+
 from processor.vlm_mode import PDFProcessor
 from processor.converters.table_to_markdown import patch_batchanalyze_output_to_markdown    
 # 新版的mineru好像已经不在需要配置文件了
 
-# "MINERU_MAX_CONCURRENT_TASKS": None,
 # 加载配置项
 load_dotenv()
 # 配置日志选项
