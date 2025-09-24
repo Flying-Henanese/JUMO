@@ -4,7 +4,7 @@ models/
 logs/
 *.pyc
 .vscode/
-database/mineru
+database/
 backup/
 kernel_meta/
 poetry.lock
