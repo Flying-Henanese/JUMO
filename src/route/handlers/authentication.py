@@ -5,7 +5,7 @@ API身份验证装饰器模块
 """
 
 from functools import wraps
-from typing import Optional, List, Callable, Any
+from typing import Optional, List, Any, TypeVar, cast
 from fastapi import HTTPException, Request
 from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN
 import os
@@ -21,6 +21,9 @@ REQUIRE_API_KEY = os.getenv('REQUIRE_API_KEY', 'false').lower() == 'true'
 
 # 移除空字符串
 API_KEYS = [key.strip() for key in API_KEYS if key.strip()]
+
+# 定义类型变量
+F = TypeVar('F')
 
 def validate_api_key(api_key: str) -> bool:
     """
@@ -41,7 +44,7 @@ def validate_api_key(api_key: str) -> bool:
 def api_key_required(
     required: bool = True,
     scopes: Optional[List[str]] = None
-) -> Callable:
+):
     """
     API Key认证装饰器
     
@@ -52,7 +55,7 @@ def api_key_required(
     Returns:
         装饰器函数
     """
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: F) -> F:
         @wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
             # 从请求中获取API Key
@@ -82,31 +85,30 @@ def api_key_required(
             
             # 验证API Key
             if api_key and not validate_api_key(api_key):
-                logger.warning(f"Invalid API Key provided: {api_key}")
+                logger.warning(f"Invalid API Key provided: {api_key[:8]}...")
                 raise HTTPException(
                     status_code=HTTP_403_FORBIDDEN,
                     detail="Invalid API Key"
                 )
             
-            # 如果没有API Key但认证不是必须的，或者认证通过
+            # 如果验证通过，调用原函数
             return await func(*args, **kwargs)
         
-        return wrapper
+        return cast(F, wrapper)
     return decorator
 
-def require_api_key(func: Callable) -> Callable:
+def require_api_key(func: F) -> F:
     """
-    简化的API Key认证装饰器（必须提供有效的API Key）
+    必须API Key认证的装饰器（api_key_required的简化版本）
     """
     return api_key_required(required=True)(func)
 
-def optional_api_key(func: Callable) -> Callable:
+def optional_api_key(func: F) -> F:
     """
-    可选的API Key认证装饰器（有API Key时验证，没有时也允许访问）
+    可选API Key认证的装饰器
     """
     return api_key_required(required=False)(func)
 
-# 导出主要功能
 __all__ = [
     'api_key_required',
     'require_api_key', 
