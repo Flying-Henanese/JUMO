@@ -2,10 +2,6 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-import tempfile
-import subprocess
-from pathlib import Path
-
 def office_bytes_to_pdf_bytes(word_bytes: bytes, suffix:str=".docx") -> bytes:
     """将Word文件字节流转换为PDF字节流。
        启动一个子进程，调用libreoffice进行转换

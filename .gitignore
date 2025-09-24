@@ -4,10 +4,15 @@ models/
 logs/
 *.pyc
 .vscode/
-database/mineru
+database/
 backup/
 kernel_meta/
 poetry.lock
 
+# Python cache directories
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution directories
 dist/
-**/__pycache__/

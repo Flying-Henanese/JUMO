@@ -9,6 +9,7 @@ if __name__ == "__main__":
     from route.pdf_route import router as pdf_router
     from route.documents_route import router as documents_router
     from route.content_searching_route import router as content_searching_router
+    from route.knowledgebase_api_route import router as knowledgebase_api_route
     from fastapi import FastAPI
     # 预加载vlm模型
     # from processor.warmup.vlm_predictor_warmup import predictor
@@ -16,5 +17,6 @@ if __name__ == "__main__":
     app.include_router(pdf_router)
     app.include_router(documents_router)
     app.include_router(content_searching_router)
+    # app.include_router(knowledgebase_api_route)
     logger.info("启动FastAPI服务，监听端口8000")
     uvicorn.run(app, host="0.0.0.0", port=5116)

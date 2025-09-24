@@ -5,7 +5,7 @@ from utils.workers_threading_pool import ThreadPoolSingleton
 from mineru.utils.ocr_utils import OcrConfidence, calculate_is_angle,get_rotate_crop_image
 
 CONCURRENCY = min(cpu_count()//2, 16)
-def get_ocr_result_list_parallel(ocr_res, useful_list, ocr_enable, new_image, lang, max_workers=8):
+def get_ocr_result_list_parallel(ocr_res, useful_list, ocr_enable, new_image, lang, max_workers=8) ->list:
     ori_im = new_image.copy()
     # 按 batch_size 划分参数列表
     params = []
@@ -21,7 +21,7 @@ def get_ocr_result_list_parallel(ocr_res, useful_list, ocr_enable, new_image, la
             results.extend(res)
     return results
 
-def process_batch(batch_ocr, useful_list, ocr_enable, ori_im, lang):
+def process_batch(batch_ocr, useful_list, ocr_enable, ori_im, lang)->list[dict]:
     res_list = []
     for box_ocr_res in batch_ocr:
         res = process_box(box_ocr_res, useful_list, ocr_enable, ori_im, lang)
@@ -29,7 +29,7 @@ def process_batch(batch_ocr, useful_list, ocr_enable, ori_im, lang):
             res_list.append(res)
     return res_list
 
-def process_box(box_ocr_res, useful_list, ocr_enable, ori_im, lang):
+def process_box(box_ocr_res, useful_list, ocr_enable, ori_im, lang)->dict|None:
     # 解包
     paste_x, paste_y, xmin, ymin, xmax, ymax, _, _ = useful_list
     # 早期过滤
