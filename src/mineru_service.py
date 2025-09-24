@@ -18,5 +18,6 @@ if __name__ == "__main__":
     app.include_router(documents_router)
     app.include_router(content_searching_router)
     # app.include_router(knowledgebase_api_route)
-    logger.info("启动FastAPI服务，监听端口8000")
-    uvicorn.run(app, host="0.0.0.0", port=5116)
+    port_num = int(os.getenv("PORT", 5116))
+    logger.info(f"启动FastAPI服务，监听端口{port_num}")
+    uvicorn.run(app, host="0.0.0.0", port=port_num)
