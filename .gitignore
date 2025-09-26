@@ -16,3 +16,4 @@ __pycache__/
 
 # Distribution directories
 dist/
+**/.DS_Store
