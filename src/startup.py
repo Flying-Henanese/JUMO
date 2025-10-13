@@ -11,6 +11,8 @@
 """
 import os
 from dotenv import load_dotenv
+# 配置huggingface镜像站，以免有些模型只能从huggingface下载
+os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 # 这个作用是移除默认的stdout sinsk，并添加一些配置项
 from utils.logging import setup_logger
 from data.operation import TaskRepository
@@ -36,14 +38,12 @@ from processor.pdf_processor import PDFProcessor
 # 所以需要进行转换
 from processor.converters.table_to_markdown import patch_batchanalyze_output_to_markdown    
 
-# 配置huggingface镜像站，以免有些模型只能从huggingface下载
-os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 # 从国内的modelscope下载模型，避免huggingface无法访问的问题
 os.environ['MINERU_MODEL_SOURCE'] = 'modelscope'
 # 指定要使用的cuda设备的编号
 os.environ['MINERU_DEVICE_MODE'] = f'cuda:{os.getenv("DEFAULT_CUDA_DEVICE", "0")}'
 
-from processor.pdf_processor import PDFProcessor
+from processor.vlm_mode import PDFProcessor
 from processor.converters.table_to_markdown import patch_batchanalyze_output_to_markdown    
 # 新版的mineru好像已经不在需要配置文件了
 

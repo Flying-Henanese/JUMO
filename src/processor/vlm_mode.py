@@ -74,8 +74,8 @@ class PDFProcessor:
                 middle_json, infer_result = doc_analyze(                                     # ★
                     pdf_bytes,
                     image_writer=image_writer,      # 继续复用 FileBasedDataWriter
-                    backend="sglang-client",
-                    server_url="http://127.0.0.1:30000"       # ★ 关键切换点
+                    backend="vllm-engine",
+                    server_url=None       # ★ 关键切换点
                 )
 
                 # 上传图片
