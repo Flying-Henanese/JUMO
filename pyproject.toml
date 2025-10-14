@@ -119,12 +119,11 @@ dependencies = [
     "pyarrow (<=20.0.0)",
     "addict (>=2.4.0,<3.0.0)",
     "mdit-py-plugins (>=0.5.0,<0.6.0)",
-    "celery (>=5.5.3,<6.0.0)",
     "redislite (>=6.2.912183,<7.0.0)",
-    "ray[serve] (>=2.49.0,<3.0.0)",
     "html-to-markdown (>=1.9.1,<2.0.0)",
     "stringzilla (>=3.12.6,<4.0.0)",
     "vllm (>=0.11.0,<0.12.0)",
+    "litserve (>=0.2.15,<0.3.0)",
 ]
 
 
@@ -158,8 +157,3 @@ url = "https://mirrors.aliyun.com/pypi/simple/"
 triton = { version = "^3.3.1", optional = true }
 
 # 这里预留给三个环境特有的依赖
-[tool.poetry.group.cuda.dependencies]
-
-[tool.poetry.group.macos.dependencies]
-
-[tool.poetry.group.huawei.dependencies]
