@@ -1,6 +1,6 @@
 [project]
 name = "mineru-service"
-version = "0.7.0"
+version = "1.0.1"
 description = "将minerU封装可以远程调用的API服务, 供其他应用调用"
 authors = [
     {name = "ZHOU shujian"}

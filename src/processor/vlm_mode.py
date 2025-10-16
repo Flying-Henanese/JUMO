@@ -75,7 +75,11 @@ class PDFProcessor:
                     pdf_bytes,
                     image_writer=image_writer,      # 继续复用 FileBasedDataWriter
                     backend="vllm-engine",
-                    server_url=None       # ★ 关键切换点
+                    server_url=None,       # ★ 关键切换点
+                    tensor_parallel_size=1,  # 添加tensor_parallel_size参数
+                    gpu_memory_utilization=0.4,  # 降低GPU内存使用率
+                    #max_num_batched_tokens=1024,  # 限制批处理的token数量
+                    #max_model_len=2048  # 限制模型最大长度
                 )
 
                 # 上传图片

@@ -32,19 +32,19 @@ from wrapper.image_processing_boost import get_ocr_result_list_parallel
 import mineru.utils.ocr_utils
 mineru.utils.ocr_utils.get_ocr_result_list = get_ocr_result_list_parallel
 
-# 
+# 从国内的modelscope下载模型，避免huggingface无法访问的问题
+os.environ['MINERU_MODEL_SOURCE'] = 'modelscope'
+# 指定要使用的cuda设备的编号
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2'  # 使用2个GPU，与tensor_parallel_size=2保持一致
+#os.environ['MINERU_DEVICE_MODE'] = f'cuda:{os.getenv("DEFAULT_CUDA_DEVICE", "0")}'
 from processor.pdf_processor import PDFProcessor
 # 应用猴子补丁，因为mineru输出的表格并不是标准的markdown格式而是html，
 # 所以需要进行转换
 from processor.converters.table_to_markdown import patch_batchanalyze_output_to_markdown    
 
-# 从国内的modelscope下载模型，避免huggingface无法访问的问题
-os.environ['MINERU_MODEL_SOURCE'] = 'modelscope'
-# 指定要使用的cuda设备的编号
-os.environ['MINERU_DEVICE_MODE'] = f'cuda:{os.getenv("DEFAULT_CUDA_DEVICE", "0")}'
-
-from processor.vlm_mode import PDFProcessor
-from processor.converters.table_to_markdown import patch_batchanalyze_output_to_markdown    
+# VLM模式使用下面的PDF处理器
+#from processor.vlm_mode import PDFProcessor
+#from processor.converters.table_to_markdown import patch_batchanalyze_output_to_markdown    
 # 新版的mineru好像已经不在需要配置文件了
 
 # 加载配置项
@@ -55,6 +55,5 @@ setup_logger()
 task_repository = TaskRepository()
 minio_tool = MinioConnection()
 pdf_processor = PDFProcessor(minio_tool=minio_tool, task_repository=task_repository)
-thread_pool = ThreadPoolExecutor(max_workers=int(os.getenv('MAX_CURRENT_WORKER', 1)))# worker的数量已经在线程池中完成了配置
+thread_pool = ThreadPoolExecutor(max_workers=int(os.getenv('MAX_CURRENT_WORKER', 1)))# 因为mineru的模型是单例模式，所以这里改大了没有用
 patch_batchanalyze_output_to_markdown()
-
