@@ -25,10 +25,9 @@ from PIL import Image
 
 class PDFProcessor:
     def __init__(self, minio_tool: MinioConnection, task_repository: TaskRepository):
-        self.minio_tool = minio_tool
-        self.task_repository = task_repository
+        self.minio_tool: MinioConnection = minio_tool
+        self.task_repository: TaskRepository = task_repository
     
-
     @log_with_time_consumption(level="INFO")
     # @with_gpu_selection
     def _sync_process_pdf(self, current_task: Task):
@@ -70,14 +69,19 @@ class PDFProcessor:
                 local_image_dir, local_md_dir = prepare_env(output_dir, file_name, "auto")
                 image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
-
+                # 设置识别功能的环境变量（按照MinerU源码中的方式）
+                os.environ['MINERU_VLM_FORMULA_ENABLE'] = str(current_task.formula_enabled)  # 控制公式识别
+                os.environ['MINERU_VLM_TABLE_ENABLE'] = str(current_task.table_enabled)      # 控制表格识别
+                os.environ['MINERU_VLM_OCR_LANG'] = str(current_task.ocr_lang)          # 控制OCR识别
+                
+                # 注意：OCR语言通过函数参数传递，不是环境变量
                 middle_json, infer_result = doc_analyze(                                     # ★
                     pdf_bytes,
                     image_writer=image_writer,      # 继续复用 FileBasedDataWriter
                     backend="vllm-engine",
                     server_url=None,       # ★ 关键切换点
                     tensor_parallel_size=1,  # 添加tensor_parallel_size参数
-                    gpu_memory_utilization=0.4,  # 降低GPU内存使用率
+                    gpu_memory_utilization=0.55,  # 降低GPU内存使用率
                     #max_num_batched_tokens=1024,  # 限制批处理的token数量
                     #max_model_len=2048  # 限制模型最大长度
                 )
