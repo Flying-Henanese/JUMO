@@ -34,7 +34,7 @@ mineru.utils.ocr_utils.get_ocr_result_list = get_ocr_result_list_parallel
 
 # 环境变量配置已移动到启动脚本 start_service.sh 中
 # 这样可以实现配置与代码分离，便于不同环境的部署和管理
-from processor.vlm_mode import PDFProcessor
+from processor.pdf_processor import PDFProcessor
 # 应用猴子补丁，因为mineru输出的表格并不是标准的markdown格式而是html，
 # 所以需要进行转换
 from processor.converters.table_to_markdown import patch_batchanalyze_output_to_markdown    
