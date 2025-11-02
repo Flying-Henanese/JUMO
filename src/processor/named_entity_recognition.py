@@ -1,10 +1,12 @@
+from cgitb import text
 import os
 import threading
 import torch
+os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 from transformers import AutoTokenizer, AutoModelForTokenClassification, pipeline
 from typing import List, Dict, Any, Optional
 from loguru import logger
-from utils.singleton import class_singleton
+from utils.singleton import parameterized_singleton
 from transformers.pipelines import Pipeline
 from transformers.modeling_utils import PreTrainedModel
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
@@ -13,7 +15,7 @@ from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 # 预设好NER模型的名称
 MODEL_NAME = "uer/roberta-base-finetuned-cluener2020-chinese"
-
+ENGLISH_MODEL_NAME = "elastic/distilbert-base-cased-finetuned-conll03-english"
 # region
 class Entity:
     """
@@ -25,7 +27,7 @@ class Entity:
                  score: float, 
                  start: int, 
                  end: int,
-                 source_text: Optional[str] = None):
+                 ):
         """
         初始化实体对象
         
@@ -35,21 +37,57 @@ class Entity:
             score (float): 置信度分数 (0-1之间)
             start (int): 在原文中的起始位置
             end (int): 在原文中的结束位置
-            source_text (Optional[str]): 原始文本，用于验证和调试
         """
         self.entity_group = entity_group
-        self.entity_text = entity_text.strip().replace(' ', '')
+        self._raw_entity_text = entity_text  # 保存原始文本
         self.score = round(score, 4)
         self.start = start
         self.end = end
-        self.source_text = source_text
+        
+        # 检测是否为中文实体
+        self.is_chinese = self._detect_chinese(entity_text)
         
         # 验证数据有效性
         self._validate()
     
+    def _detect_chinese(self, text: str) -> bool:
+        """
+        检测文本是否包含中文字符
+        
+        Args:
+            text: 要检测的文本
+            
+        Returns:
+            bool: 如果包含中文字符返回True，否则返回False
+        """
+        return any('\u4e00' <= char <= '\u9fff' for char in text)
+    
+    @property
+    def entity_text(self) -> str:
+        """
+        获取清理后的实体文本
+        
+        - 中文实体：去除字符间的空格
+        - 英文实体：保留正常空格，规范化多余空格
+        
+        Returns:
+            str: 清理后的实体文本
+        """
+        return self._clean_entity_text(self._raw_entity_text)
+    
+    @property
+    def raw_entity_text(self) -> str:
+        """
+        获取原始的实体文本（未经清理）
+        
+        Returns:
+            str: 原始实体文本
+        """
+        return self._raw_entity_text
+    
     def _validate(self):
         """验证实体数据的有效性"""
-        if not self.entity_text:
+        if not self._raw_entity_text.strip():
             raise ValueError("实体文本不能为空")
         if not (0 <= self.score <= 1):
             raise ValueError(f"置信度分数必须在0-1之间，当前值: {self.score}")
@@ -57,6 +95,29 @@ class Entity:
             raise ValueError(f"位置索引不能为负数，start: {self.start}, end: {self.end}")
         if self.start >= self.end:
             raise ValueError(f"起始位置必须小于结束位置，start: {self.start}, end: {self.end}")
+    
+    def _clean_entity_text(self, text: str) -> str:
+        """
+        智能清理实体文本
+        
+        Args:
+            text: 原始实体文本
+            
+        Returns:
+            str: 清理后的实体文本
+        """
+        if not text:
+            return text
+        
+        # 基础清理：去除首尾空格
+        text = text.strip()
+        
+        if self.is_chinese:
+            # 中文文本：去除所有空格（因为中文NER模型输出的空格通常是多余的）
+            text = text.replace(' ', '')
+        # 英文实体：保持原样，不做额外处理（连续空格在实体名称中极其罕见）
+        
+        return text
     
     def is_person(self) -> bool:
         """判断是否为人名实体"""
@@ -74,22 +135,26 @@ class Entity:
         """转换为字典格式，兼容现有API"""
         return {
             'entity_group': self.entity_group,
-            'entity': self.entity_text,
+            'entity': self.entity_text,  # 返回清理后的文本
+            'raw_entity': self.raw_entity_text,  # 同时提供原始文本
+            'is_chinese': self.is_chinese,  # 语言标识
             'score': self.score,
             'start': self.start,
             'end': self.end
         }
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any], source_text: Optional[str] = None) -> 'Entity':
-        """从字典创建实体对象"""
+    def from_dict(cls, data: Dict[str, Any]) -> 'Entity':
+        """从字典创建Entity对象"""
+        # 优先使用raw_entity，如果没有则使用entity或word
+        entity_text = data.get('raw_entity') or data.get('entity') or data.get('word', '')
+        
         return cls(
             entity_group=data.get('entity_group', 'UNKNOWN'),
-            entity_text=data.get('entity', data.get('word', '')),
-            score=data.get('score', 0.0),
+            entity_text=entity_text,
+            score=data.get('score', 0),
             start=data.get('start', 0),
-            end=data.get('end', 0),
-            source_text=source_text
+            end=data.get('end', 0)
         )
     
     def __str__(self) -> str:
@@ -117,7 +182,7 @@ class Entity:
         return hash((self.entity_group, self.entity_text))
 # endregion
 
-@class_singleton
+@parameterized_singleton(lambda model_name: model_name)
 class SingletonNERModel:
     """
     使用单例模式的命名实体识别模型
@@ -261,13 +326,16 @@ class SingletonNERModel:
             for entity_data in filtered_entities:
                 if return_objects:
                     # 返回Entity对象
-                    entity_obj = Entity.from_dict(entity_data, source_text=original_text)
+                    entity_obj = Entity.from_dict(entity_data)
                     entities.append(entity_obj)
                 else:
                     # 返回字典格式（保持向后兼容）
+                    # 创建临时Entity对象来利用其智能文本处理逻辑
+                    temp_entity = Entity.from_dict(entity_data)
+                    
                     entities.append({
                         'entity_group': entity_data.get('entity_group', 'UNKNOWN'),
-                        'entity': entity_data.get('word', '').replace(' ', ''),
+                        'entity': temp_entity.entity_text,  # 使用Entity的智能处理结果
                         'score': round(entity_data.get('score', 0), 4),
                         'start': entity_data.get('start', 0),
                         'end': entity_data.get('end', 0)
@@ -340,89 +408,67 @@ class SingletonNERModel:
         return [entity for entity in entities if entity['entity_group'] == entity_type]
 
 
-def get_ner_model(model_name: str = MODEL_NAME, device: Optional[str] = None) -> SingletonNERModel:
+# 全局模型实例 - 直接创建，无需延迟初始化
+logger.info("初始化中文NER模型...")
+_chinese_ner_model: SingletonNERModel = SingletonNERModel(MODEL_NAME)
+
+logger.info("初始化英文NER模型...")
+_english_ner_model: SingletonNERModel = SingletonNERModel(ENGLISH_MODEL_NAME)
+_model_lock = threading.Lock()
+
+
+def _is_chinese_text(text: str) -> bool:
     """
-    获取NER模型单例实例
+    简单的中文文本检测
     
     Args:
-        model_name (str): 模型名称，默认使用中文NER模型
-        device (str, optional): 指定设备，如果不指定则自动选择
+        text (str): 要检测的文本
         
     Returns:
-        SingletonNERModel: NER模型实例
+        bool: 如果包含中文字符返回True，否则返回False
     """
-    return SingletonNERModel(model_name=model_name, device=device)
+    if not text:
+        return False
+    
+    # 检查是否包含中文字符（Unicode范围：\u4e00-\u9fff）
+    for char in text:
+        if '\u4e00' <= char <= '\u9fff':
+            return True
+    return False
 
-
-# 便捷函数
-def extract_entities_from_text(text: str, confidence_threshold: float = 0.5, 
-                              model_name: str = MODEL_NAME, 
-                              return_objects: bool = False) -> List[Dict[str, Any]]:
+def extract_entities_auto(text: str, confidence_threshold: float = 0.5, 
+                         return_objects: bool = False, entity_num: int = 5) -> List[Dict[str, Any]]:
     """
-    便捷函数：从文本中提取命名实体
+    自动选择模型进行实体识别
     
     Args:
         text (str): 输入文本
         confidence_threshold (float): 置信度阈值，默认0.5
-        model_name (str): 模型名称，默认使用全局MODEL_NAME
         return_objects (bool): 是否返回Entity对象，默认False返回字典
+        entity_num (int): 返回的最大实体数量，默认5个
         
     Returns:
         List[Dict[str, Any]] 或 List[Entity]: 实体列表
     """
-    ner_model = get_ner_model(model_name=model_name)
-    return ner_model.extract_entities(text, confidence_threshold, return_objects)
+    if not text or not text.strip():
+        logger.warning("输入文本为空")
+        return []
 
-
-def main():
-    """
-    测试函数，演示Entity对象的使用
-    """
-    # 测试文本
-    text = """
-    张三是北京大学的教授，他在清华大学获得了博士学位。
-    他的研究领域是人工智能，曾在微软亚洲研究院工作过。
-    现在他住在北京市海淀区，经常去中关村参加技术交流会。
-    """
     
-    print("=== 命名实体识别测试 ===")
-    print(f"输入文本: {text.strip()}")
-    print()
+    # 检测语言并选择对应模型
+    if _is_chinese_text(text):
+        logger.debug("检测到中文文本，使用中文模型")
+        model = _chinese_ner_model
+    else:
+        logger.debug("检测到英文文本，使用英文模型")
+        model = _english_ner_model
     
-    # 获取NER模型
-    ner_model = get_ner_model()
-    
-    # 测试返回字典格式（向后兼容）
-    print("1. 字典格式结果:")
-    dict_entities = ner_model.extract_entities(text, confidence_threshold=0.3, return_objects=False)
-    for i, entity in enumerate(dict_entities, 1):
-        print(f"  {i}. {entity}")
-    print()
-    
-    # 测试返回Entity对象
-    print("2. Entity对象格式结果:")
-    entity_objects = ner_model.extract_entities(text, confidence_threshold=0.3, return_objects=True)
-    for i, entity in enumerate(entity_objects, 1):
-        print(f"  {i}. {entity}")
-        print(f"     - 类型判断: 人名={entity.is_person()}, 组织={entity.is_organization()}, 地点={entity.is_location()}")
-    print()
-    
-    # 测试实体类型获取
-    print("3. 实体类型:")
-    entity_types = ner_model.get_entity_types(text)
-    print(f"  发现的实体类型: {entity_types}")
-    print()
-    
-    # 测试按类型筛选
-    if entity_types:
-        first_type = entity_types[0]
-        print(f"4. '{first_type}' 类型的实体:")
-        type_entities = ner_model.get_entities_by_type(text, first_type)
-        for entity in type_entities:
-            print(f"  - {entity}")
-    
-    print("\n=== 测试完成 ===")
+    # 调用对应模型进行实体识别
+    return model.extract_entities(text, confidence_threshold, return_objects, entity_num)
 
 
 if __name__ == "__main__":
-    main()
+    # 测试代码
+    text_2 = "Facebook is an American social media and social networking service owned by the American technology conglomerate Meta. Created in 2004 by Mark Zuckerberg with four other Harvard College students and roommates, Eduardo Saverin, Andrew McCollum, Dustin Moskovitz, and Chris Hughes, its name derives from the face book directories often given to American university students. Membership was initially limited to Harvard students, gradually expanding to other North American universities"
+    entities_2 = extract_entities_auto(text_2)
+    print([entity['entity'] for entity in entities_2])
