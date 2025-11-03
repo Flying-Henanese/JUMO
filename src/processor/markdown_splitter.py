@@ -34,9 +34,7 @@ class SingletonSentenceTransformer:
     def __new__(cls, model_id='BAAI/bge-small-zh-v1.5', mirror=True, device=DEVICE_MODE):
         if cls._instance is None:
             with cls._lock:
-                if mirror:
-                    os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
-                print(f"正在加载模型：{model_id}（mirror={mirror}）…")
+                print(f"正在通过{os.getenv('HF_ENDPOINT')}加载模型：{model_id}（mirror={mirror}）,device={device}")
                 cls._instance = SentenceTransformer(model_id, device=f'cuda:{device}')
                 print("模型加载完成。")
         return cls._instance
@@ -422,17 +420,19 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
 
 # region
 # 测试代码
-if __name__ == "__main__":
-    from .converters.doc_to_markdown import doc_to_markdown 
-    file = '/Users/zhoushujian/Downloads/运维.docx'
-    md_text = doc_to_markdown(file)
-    with open("original_运维.md", 'w', encoding='utf-8') as f:
-        f.write(md_text)
-    processed_md = process_markdown(md_text, max_length=500) 
-    # import subprocess
-    out_file = "processed_运维.md"
-    with open(out_file, 'w', encoding='utf-8') as f:
-        f.write(processed_md)    
-    # print(f'处理后的markdown文件已保存到{out_file},现在来看看效果')
-    # subprocess.run(['open',out_file])
-# endregion
+# if __name__ == "__main__":
+#     # from .converters.doc_to_markdown import doc_to_markdown 
+#     # file = '/Users/zhoushujian/Downloads/运维.docx'
+#     # md_text = doc_to_markdown(file)
+#     # with open("original_运维.md", 'w', encoding='utf-8') as f:
+#     #     f.write(md_text)
+#     with open("test.md", 'r', encoding='utf-8') as f:
+#         md_text = f.read()
+#     processed_md = process_markdown(md_text, max_length=500) 
+#     # import subprocess
+#     out_file = "processed_运维.md"
+#     with open(out_file, 'w', encoding='utf-8') as f:
+#         f.write(processed_md)    
+#     print(f'处理后的markdown文件已保存到{out_file},现在来看看效果')
+#     # subprocess.run(['open',out_file])
+# # endregion
