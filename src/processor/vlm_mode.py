@@ -70,6 +70,7 @@ class PDFProcessor:
                 local_image_dir, local_md_dir = prepare_env(output_dir, file_name, "auto")
                 image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
+                os.environ['MINERU_VLM_OCR_LANG'] = str(current_task.ocr_lang)          # 控制OCR识别
 
                 middle_json, infer_result = doc_analyze(                                     # ★
                     pdf_bytes,
@@ -77,7 +78,7 @@ class PDFProcessor:
                     backend="vllm-engine",
                     server_url=None,       # ★ 关键切换点
                     tensor_parallel_size=1,  # 添加tensor_parallel_size参数
-                    gpu_memory_utilization=0.4,  # 降低GPU内存使用率
+                    gpu_memory_utilization=0.5,  # 降低GPU内存使用率
                     #max_num_batched_tokens=1024,  # 限制批处理的token数量
                     #max_model_len=2048  # 限制模型最大长度
                 )
