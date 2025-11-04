@@ -502,12 +502,24 @@ def extract_entities_auto(text: str, confidence_threshold: float = 0.5,
     # 检测语言并选择对应模型
     if _is_chinese_text(text):
         logger.debug("检测到中文文本，使用中文模型")
-        model = _chinese_ner_model
+        model: SingletonNERModel = _chinese_ner_model
     else:
         logger.debug("检测到英文文本，使用英文模型")
-        model = _english_ner_model
+        model: SingletonNERModel = _english_ner_model
     
     # 调用对应模型进行实体识别
     return model.extract_entities(text, confidence_threshold, return_objects, entity_num)
 
+def append_entities_to_header(header: str, chunk: str) -> str:
+    """
+    提取实体信息并将其添加到标题尾部。
+    """
+    try:
+        entities: list[str] = [entity['entity'] for entity in extract_entities_auto(chunk) if entity['entity']]
+        if entities:
+            displayed_entities = ', '.join(entities) 
+            processed_header = f"{header} | ({displayed_entities})"
+    except Exception as e:
+        logger.warning(f"提取实体时发生异常: {e}")
+    return processed_header if processed_header else header
 
