@@ -161,6 +161,7 @@ def process_markdown(md_text: str, max_length: int = 500) -> str:
     result = []
     # 当前正在处理的段落内容
     current_content = []
+    # 当前的各级标题
     title_stack = [""] * 6  # h1-h6
 
     def get_title_path():
@@ -186,6 +187,7 @@ def process_markdown(md_text: str, max_length: int = 500) -> str:
         """
         if not current_content:
             return
+        # 
         content = '\n'.join(current_content).strip()
         if not content:
             current_content.clear()
@@ -257,26 +259,27 @@ def process_markdown(md_text: str, max_length: int = 500) -> str:
                         if tokens[k].map and tokens[k].map[0] is not None:
                             table_end = tokens[k].map[0]  # 使用下一个元素的开始位置
                             break
-                    
+                    # 启发式扫描：直到遇到非表格行；若未遇到，则表格到文末
                     if table_end is None:
-                        # 如果还是找不到，使用启发式方法：从table_start开始向下扫描
-                        table_end = table_start + 1
-                        # 简单启发式：找到第一个空行或非表格行
                         for line_idx in range(table_start, len(original_lines)):
                             line = original_lines[line_idx].strip()
                             if not line or not (line.startswith('|') or '|' in line):
                                 table_end = line_idx
                                 break
+                        if table_end is None:
+                            table_end = len(original_lines)
             else:
-                # 没找到table_close，使用启发式方法
-                table_end = table_start + 1
+                # 没找到table_close，使用启发式方法：直到遇到非表格行；若未遇到，则到文末
+                table_end = None
                 for line_idx in range(table_start, len(original_lines)):
                     line = original_lines[line_idx].strip()
                     if not line or not (line.startswith('|') or '|' in line):
                         table_end = line_idx
                         break
+                if table_end is None:
+                    table_end = len(original_lines)
             
-            # 提取表格内容
+            # 提取表格内容（包含所有行直至 table_end）
             table_content = '\n'.join(original_lines[table_start:table_end])
             
             current_content.append(table_content)
@@ -368,6 +371,8 @@ def process_markdown(md_text: str, max_length: int = 500) -> str:
             logger.warning(f"无法处理的token类型: {token.type}, 内容: {getattr(token, 'content', 'N/A')}")  # 添加调试信息
             i += 1
 
+    # 循环结束后，确保把最后一个段落刷入结果（无标题场景）
+    flush_content()
     if result and result[-1] == "-" * 10:
         result.pop()
 

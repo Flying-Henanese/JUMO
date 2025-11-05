@@ -514,12 +514,13 @@ def append_entities_to_header(header: str, chunk: str) -> str:
     """
     提取实体信息并将其添加到标题尾部。
     """
+    processed_header = None
     try:
-        entities: list[str] = [entity['entity'] for entity in extract_entities_auto(chunk) if entity['entity']]
-        if entities:
-            displayed_entities = ', '.join(entities) 
+        entities: list[str] = [e.get('entity') for e in extract_entities_auto(chunk) if e.get('entity')]
+        if header and entities:
+            displayed_entities = ', '.join(entities)
             processed_header = f"{header} | ({displayed_entities})"
     except Exception as e:
         logger.warning(f"提取实体时发生异常: {e}")
-    return processed_header if processed_header else header
+    return processed_header if processed_header is not None else header
 
