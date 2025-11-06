@@ -315,8 +315,12 @@ class SingletonNERModel:
             logger.error(f"加载NER模型失败: {e}")
             raise
     
-    def extract_entities(self, text: str, confidence_threshold: float = 0.5, 
-                        return_objects: bool = False, entity_num: int = 5) -> List[Dict[str, Any]]:
+    def extract_entities(self, 
+                        text: str, 
+                        confidence_threshold: float = 0.7, 
+                        return_objects: bool = False, 
+                        entity_num: int = 5
+    ) -> List[Dict[str, Any]]:
         """
         从文本中提取命名实体
         
@@ -367,51 +371,46 @@ class SingletonNERModel:
             # 创建Entity对象或字典
             entities = []
             for entity_data in filtered_entities:
+                # 使用独立函数重建更友好的实体文本与词边界
+                # 避免出现识别出来的实体是一个被拆出来的子词（比如kagawa被识别成了#gawa）
+                clean_text, left, right = _reconstruct_entity_text_and_bounds(original_text, entity_data)
+
                 if return_objects:
-                    # 返回Entity对象
-                    entity_obj = Entity.from_dict(entity_data)
+                    entity_obj = Entity(
+                        entity_group=entity_data.get('entity_group', 'UNKNOWN'),
+                        entity_text=clean_text,
+                        score=round(entity_data.get('score', 0), 4),
+                        start=left,
+                        end=right
+                    )
                     entities.append(entity_obj)
                 else:
-                    # 返回字典格式（保持向后兼容）
-                    # 创建临时Entity对象来利用其智能文本处理逻辑
-                    temp_entity = Entity.from_dict(entity_data)
-                    
                     entities.append({
                         'entity_group': entity_data.get('entity_group', 'UNKNOWN'),
-                        'entity': temp_entity.entity_text,  # 使用Entity的智能处理结果
+                        'entity': clean_text,
                         'score': round(entity_data.get('score', 0), 4),
-                        'start': entity_data.get('start', 0),
-                        'end': entity_data.get('end', 0)
+                        'start': left,
+                        'end': right
                     })
             
             # 根据置信度对实体进行排序（降序排列）
             if return_objects:
-                # 对于Entity对象，使用score属性排序
                 entities.sort(key=lambda x: x.score, reverse=True)
             else:
-                # 对于字典格式，使用score键排序
                 entities.sort(key=lambda x: x['score'], reverse=True)
 
             # 使用有序集合去重并保留置信度最高的实体
             unique_entities = OrderedDict()
-
             for entity in entities:
                 if return_objects:
-                    # 对于Entity对象，使用实体文本和类型作为键
                     entity_key = (entity.entity_group, entity.entity_text)
                 else:
-                    # 对于字典格式，使用(entity_group, entity)元组作为键
                     entity_key = (entity['entity_group'], entity['entity'])
-
-                # 如果实体未被记录，则添加到有序集合中
                 if entity_key not in unique_entities:
                     unique_entities[entity_key] = entity
-
-                # 如果达到最大数量限制，提前终止
                 if len(unique_entities) >= entity_num:
                     break
 
-            # 返回去重后的实体列表
             return list(unique_entities.values())
             
             logger.info(f"识别到 {len(entities)} 个实体，过滤后保留 {len(unique_entities)} 个不同实体")
@@ -479,6 +478,58 @@ def _is_chinese_text(text: str) -> bool:
         if '\u4e00' <= char <= '\u9fff':
             return True
     return False
+
+# 模块级函数：_reconstruct_entity_text_and_bounds
+def _reconstruct_entity_text_and_bounds(original_text: str, entity_data: Dict[str, Any]):
+    """
+    基于原文和 NER 输出的起止位置，重建更友好的实体文本：
+    - 向左右扩展到完整英文单词边界（仅 ASCII 英文字母）
+    - 去除 WordPiece 前缀“##”
+    - 中文场景移除空格
+    返回: (clean_text, left_idx, right_idx)
+    """
+
+    # 边界保护，获取原始段落的长度
+    n = len(original_text)
+    try:
+        # 获取这个实体在原文中的起始索引
+        start = max(0, int(entity_data.get('start', 0)))
+        # 获取这个实体在原文中的结束索引
+        end = min(n, int(entity_data.get('end', 0)))
+    except Exception:
+        start, end = 0, 0
+    if start >= end:
+        start, end = 0, 0
+
+    # 仅在英文场景扩展词边界
+    # 但是这个函数现在还很暴力
+    def is_letter(ch: str) -> bool:
+        allowed = "-_.&'’"
+        return ch.isascii() and (ch.isalnum() or ch in allowed)
+
+    left, right = start, end
+    # 向左扩展到完整英文单词边界
+    while left > 0 and is_letter(original_text[left - 1]):
+        left -= 1
+    # 向右扩展到完整英文单词边界
+    while right < n and is_letter(original_text[right]):
+        right += 1
+
+    # 原文切片优先
+    full_text = original_text[left:right].strip() if left < right else ""
+    # 兜底使用 pipeline 的文本
+    if not full_text:
+        fallback = entity_data.get('raw_entity') or entity_data.get('entity') or entity_data.get('word') or ""
+        full_text = str(fallback)
+
+    # 清理 WordPiece 前缀
+    full_text = full_text.replace("##", "")
+
+    # 中文场景移除空格
+    if _is_chinese_text(full_text):
+        full_text = full_text.replace(" ", "")
+
+    return full_text, left, right
 
 def extract_entities_auto(text: str, confidence_threshold: float = 0.5, 
                          return_objects: bool = False, entity_num: int = 5) -> List[Dict[str, Any]]:
