@@ -9,6 +9,7 @@ from nltk.tokenize import sent_tokenize
 import os
 import threading
 from loguru import logger
+from .named_entity_recognition import extract_entities
 
 
 DEVICE_MODE = os.getenv("DEFAULT_CUDA_DEVICE", "0") # 选择CUDA设备
@@ -149,7 +150,7 @@ def find_best_num_clusters(embeddings, min_clusters=2, max_clusters=10):
     return best_k
 
 
-def semantic_chunking_with_auto_clusters(text, max_chunk_size=500, model_id="BAAI/bge-small-zh-v1.5"):
+def semantic_chunking_with_auto_clusters(text, max_chunk_size=500, model_id="BAAI/bge-small-zh-v1.5")->list[str]:
     """
     自动选择最佳簇数的语义切分
     """
@@ -246,6 +247,7 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
             result.extend([header, content, "-" * 10])
         else:
             # 处理普通的文本段落
+
             if len(content) > max_length:
                 # 使用段落切分法
                 # chunks = split_paragraphs_with_overlap(content, max_length)
@@ -253,6 +255,7 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
                 chunks = semantic_chunking_with_auto_clusters(content, max_chunk_size=max_length)
                 for i, chunk in enumerate(chunks, 1):
                     header = f"{'#' * level} {title_path}|Part {i}" if title_path else f"{'#' * level} Part {i}"
+                    
                     result.extend([header, chunk, "-" * 10])
             else:
                 header = f"{'#' * level} {title_path}" if title_path else ""

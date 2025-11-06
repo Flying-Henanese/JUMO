@@ -16,7 +16,7 @@ def get_redis_config_from_env():
     return {
         'host': os.getenv('REDIS_HOST', 'localhost'),
         'port': int(os.getenv('REDIS_PORT', 6379)),
-        'db': int(os.getenv('REDIS_DB', 0)),
+        'db': int(os.getenv('REDIS_DB', 0)), # 配置redis_db编号，从0到
         'password': os.getenv('REDIS_PASSWORD') or None,  # 空字符串转为None
         'decode_responses': False
     }
