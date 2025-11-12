@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 from fastapi import APIRouter, BackgroundTasks
 from minio.error import S3Error
 from const.ocr_lang_enum import OCRLanguage
-from data.model import Task, ActiveTask
+from data.model import Task
 from utils.id_generator import generate_short_uuid
 from const.task_status_enum import TaskStatus
 from processor.tasking.pdf_task import process_pdf_task
@@ -151,13 +151,6 @@ async def analyze_pdf(
             output_info='',
             create_time=datetime.now(),
             finish_time=None,
-        )
-
-        active_task = ActiveTask(
-            task_id=task_id,
-            start_time=datetime.now(),
-            queued_time=None,
-            status=TaskStatus.QUEUED,
         )
 
         # 先创建任务响应对象

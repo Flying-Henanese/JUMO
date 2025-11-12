@@ -1,7 +1,7 @@
 from loguru import logger
 import os
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
-from processor.vlm_mode import PDFProcessor
+# from processor.vlm_mode import PDFProcessor  # 移除顶层导入，避免父进程初始化 CUDA
 from celery_worker.celery_server import celery_app
 from data.operation import TaskRepository
 from utils.minio_tool import MinioConnection
@@ -46,6 +46,7 @@ def _init_services(**kwargs):
     if _minio is None:
         _minio = MinioConnection()
     if _processor is None:
+        from processor.vlm_mode import PDFProcessor
         _processor = PDFProcessor(minio_tool=_minio, task_repository=_repo)
 
 @celery_app.task(name="process_pdf", bind=True, queue=DEFAULT_QUEUE_NAME)
@@ -77,15 +78,16 @@ def process_pdf_celery(self, task_id: str):
 
         processor._sync_process_pdf(task_obj)
         logger.info(f"Task {task_id} 处理完成")
-
+        succeeded = True
     except Exception as e:
         logger.exception(f"Task {task_id} 处理失败: {e}")
+        succeeded = False
     finally:
         db.close()
 
     # 完成当前任务并调度下一个
     try:
-        next_task = repo.complete_task(task_id)
+        next_task = repo.complete_task(task_id, succeeded=succeeded)
         if next_task:
             logger.info(f"从队列调度下一个任务: {next_task.task_id}")
             process_pdf_celery.delay(next_task.task_id)
@@ -111,7 +113,7 @@ if __name__ == "__main__":
         env["WORKER_QUEUE_NAME"] = q
         cmd = [
             "celery", "-A", "src.celery_worker.pdf_process_worker", "worker",
-            "-Q", q, "-n", f"worker_{q}@%h", "--concurrency", "1", "-P", "prefork",
+            "-Q", q, "-n", f"worker_{q}@%h", "--concurrency", "1", "-P", "solo",
         ]
         procs.append(subprocess.Popen(cmd, env=env))
     for p in procs:

@@ -43,11 +43,12 @@ class Task(Base):
     create_time = Column(DateTime, nullable=False, server_default=func.current_timestamp())
     # 完成时间
     finish_time = Column(DateTime)
-    # 外键约束,关联ActiveTask表
-    active_task = relationship("ActiveTask", uselist=False, back_populates="task")
+    # 状态（替代 ActiveTask 表）
+    status = Column(String, nullable=False, default=TaskStatus.QUEUED)
 
     def __repr__(self):
         return f'''Task(id={self.id}, task_id={self.task_id}, bucket_name={self.bucket_name}, object_key={self.object_key}, output_bucket={self.output_bucket}, ocr_enabled={self.ocr_enabled}, table_enabled={self.table_enabled}, ocr_lang={self.ocr_lang}, output_info={self.output_info}, create_time={self.create_time}, finish_time={self.finish_time})'''
+
 class TaskResponse(BaseModel):
     '''响应模型,用于封装任务数据'''
     task_id: str
@@ -70,38 +71,3 @@ class TaskResponse(BaseModel):
             output_bucket=task.output_bucket,
             output_info=json.loads(task.output_info) if is_completed else None
             )
-
-class ActiveTask(Base):
-    """
-    活跃任务模型
-    
-    用于记录当前正在执行或排队的任务状态信息。
-    通过task_id与Task表建立一对一关系，用于跟踪任务的实时状态。
-    
-    Attributes
-    ----------
-    task_id : str
-        任务ID，作为外键关联到tasks表的task_id字段，同时也是主键
-    start_time : datetime
-        任务开始执行的时间戳，由数据库自动生成
-    queued_time : datetime, optional
-        任务进入排队队列的时间戳，可为空
-    status : str
-        任务当前状态（如：pending, running, completed, failed等）
-    task : Task
-        关联的Task对象，通过SQLAlchemy relationship建立反向引用
-    
-    Notes
-    -----
-    该表与Task表形成一对一关系，通过task_id字段进行关联。
-    当任务完成或失败后，对应的ActiveTask记录通常会被删除。
-    """
-    __tablename__ = "active_tasks"
-    task_id = Column(String, ForeignKey("tasks.task_id"), primary_key=True)
-    start_time = Column(DateTime, server_default=func.current_timestamp())
-    queued_time = Column(DateTime)
-    status = Column(String, nullable=False)
-    task = relationship("Task", back_populates="active_task")
-
-    def __repr__(self):
-        return f"ActiveTask(task_id={self.task_id}, start_time={self.start_time}, queued_time={self.queued_time}, status={self.status})"

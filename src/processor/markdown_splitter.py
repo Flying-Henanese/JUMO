@@ -9,7 +9,7 @@ from nltk.tokenize import sent_tokenize
 import os
 import threading
 from loguru import logger
-from .named_entity_recognition import append_entities_to_header  # 引入自动实体提取函数
+from .named_entity_recognition import extract_entities_auto
 
 
 DEVICE_MODE = os.getenv("DEFAULT_CUDA_DEVICE", "0") # 选择CUDA设备
@@ -80,6 +80,55 @@ def split_mixed_sentences(text: str) -> list[str]:
                 sentences.extend([p.strip() for p in parts if p.strip()])
     return sentences
 
+# region
+def split_paragraphs_with_overlap(text: str, max_length: int = 500, overlap: int = 50) -> list[str]:
+    """
+    根据段落优先的方式切分文本：
+    1. 先将短段落聚合，保证每段尽量接近 max_length。
+    2. 对过长段落使用滑窗+重叠字符切分。
+    
+    :param text: 原始 Markdown 文本
+    :param max_length: 每段最大长度
+    :param overlap: 长段落之间的重叠字符数
+    :return: 分段结果列表
+    """
+    assert max_length > overlap, "max_length 必须大于 overlap"
+
+    # 初步拆分段落并去掉空段落
+    paragraphs = [p.strip() for p in text.strip().split('\n\n') if p.strip()]
+    
+    # 聚合短段落
+    aggregated_paragraphs = []
+    current_chunk = ""
+    for para in paragraphs:
+        # 检查当前段落加上现在正在处理的段落是否超过 max_length
+        # 如果不超过的话可以进行整合
+        if len(current_chunk) + len(para) + 2 <= max_length:  # +2 预留换行符
+            if current_chunk:
+                current_chunk += "\n\n" + para
+            else:
+                current_chunk = para
+        # 如果超过的话，之前的current_chunk自己成为一段
+        # 然后当前段落成为新的current_chunk
+        else:
+            if current_chunk:
+                aggregated_paragraphs.append(current_chunk)
+            current_chunk = para
+    # 最后有剩余的段落，没有后续的段落和他作伴了
+    # 所以直接加入结果
+    if current_chunk:
+        aggregated_paragraphs.append(current_chunk)
+
+    # 对过长段落使用滑窗切分
+    result = []
+    for para in aggregated_paragraphs:
+        if len(para) <= max_length:
+            result.append(para)
+        else:
+            result.extend(semantic_chunking_with_auto_clusters(para, max_length))
+
+    return result
+# endregion
 
 def find_best_num_clusters(embeddings, min_clusters=2, max_clusters=10):
     """
@@ -101,7 +150,7 @@ def find_best_num_clusters(embeddings, min_clusters=2, max_clusters=10):
     return best_k
 
 
-def semantic_chunking_with_auto_clusters(text, max_chunk_size=500, model_id="BAAI/bge-small-zh-v1.5")->list[str]:
+def semantic_chunking_with_auto_clusters(text, max_chunk_size=500, model_id="BAAI/bge-small-zh-v1.5"):
     """
     自动选择最佳簇数的语义切分
     """
@@ -139,7 +188,7 @@ def semantic_chunking_with_auto_clusters(text, max_chunk_size=500, model_id="BAA
 
     return chunks
 
-def process_markdown(md_text: str, max_length: int = 500) -> str:
+def process_markdown(md_text: str, max_length: int = 800) -> str:
     """
     使用 markdown-it-py 处理markdown文本，根据标题结构和内容长度进行分割。
     表格作为不可分割的元素，会直接复制到结果中。
@@ -154,14 +203,12 @@ def process_markdown(md_text: str, max_length: int = 500) -> str:
     tokens = md.parse(md_text)
     
     # 预先计算原始文本的行数组，避免在循环中重复计算
-    # 这里的行数组是为了在后续的段落合并中，能够准确地定位到原始文本的位置
     original_lines = md_text.split('\n')
     
     # 整篇文章的分段放在这里
     result = []
     # 当前正在处理的段落内容
     current_content = []
-    # 当前的各级标题
     title_stack = [""] * 6  # h1-h6
 
     def get_title_path():
@@ -172,7 +219,7 @@ def process_markdown(md_text: str, max_length: int = 500) -> str:
 
     def get_current_level():
         """
-        获取当前标题层级（找到最深级的非空标题）
+        获取当前标题层级（找到最高级的非空标题）
         """
         for i in range(5, -1, -1):
             if title_stack[i]:
@@ -187,7 +234,6 @@ def process_markdown(md_text: str, max_length: int = 500) -> str:
         """
         if not current_content:
             return
-        # 
         content = '\n'.join(current_content).strip()
         if not content:
             current_content.clear()
@@ -195,25 +241,48 @@ def process_markdown(md_text: str, max_length: int = 500) -> str:
 
         level = get_current_level()
         title_path = get_title_path()
+        
+        # 提取实体并添加到标题中
+        entities_str = ""
+        try:
+            # 提取实体，限制数量为3个，置信度阈值为0.7
+            entities = extract_entities_auto(content, confidence_threshold=0.7, entity_num=3)
+            if entities:
+                # 按类型分组实体
+                entity_by_type = {}
+                for entity in entities:
+                    entity_type = entity['entity_group']
+                    entity_text = entity['entity']
+                    if entity_type not in entity_by_type:
+                        entity_by_type[entity_type] = []
+                    entity_by_type[entity_type].append(entity_text)
+                
+                # 构建实体字符串
+                entity_parts = []
+                for entity_type, entity_list in entity_by_type.items():
+                    entity_parts.append(f"{entity_type}:{','.join(entity_list)}")
+                
+                if entity_parts:
+                    entities_str = f"|Entities[{';'.join(entity_parts)}]"
+        except Exception as e:
+            logger.warning(f"实体识别失败: {e}")
+        
         # 如果当前段落为表格，直接复制
         if special_element:
-            header = f"{'#' * level} {title_path}|{special_element}" if title_path else f"{'#' * level} {special_element}"
+            header = f"{'#' * level} {title_path}|{special_element}{entities_str}" if title_path else f"{'#' * level} {special_element}{entities_str}"
             result.extend([header, content, "-" * 10])
         else:
             # 处理普通的文本段落
-
             if len(content) > max_length:
                 # 使用段落切分法
                 # chunks = split_paragraphs_with_overlap(content, max_length)
                 # 使用句子语义近似程度切分
                 chunks = semantic_chunking_with_auto_clusters(content, max_chunk_size=max_length)
                 for i, chunk in enumerate(chunks, 1):
-                    header = f"{'#' * level} {title_path}|Part {i}" if title_path else f"{'#' * level} Part {i}"
-                    header = append_entities_to_header(header, chunk)
+                    header = f"{'#' * level} {title_path}|Part {i}{entities_str}" if title_path else f"{'#' * level} Part {i}{entities_str}"
                     result.extend([header, chunk, "-" * 10])
             else:
-                header = f"{'#' * level} {title_path}" if title_path else ""
-                header = append_entities_to_header(header, content)
+                header = f"{'#' * level} {title_path}{entities_str}" if title_path else f"{'#' * level} {entities_str}" if entities_str else ""
                 if header:
                     result.append(header)
                     result.append("")  # 添加空行分隔标题和内容
@@ -259,27 +328,26 @@ def process_markdown(md_text: str, max_length: int = 500) -> str:
                         if tokens[k].map and tokens[k].map[0] is not None:
                             table_end = tokens[k].map[0]  # 使用下一个元素的开始位置
                             break
-                    # 启发式扫描：直到遇到非表格行；若未遇到，则表格到文末
+                    
                     if table_end is None:
+                        # 如果还是找不到，使用启发式方法：从table_start开始向下扫描
+                        table_end = table_start + 1
+                        # 简单启发式：找到第一个空行或非表格行
                         for line_idx in range(table_start, len(original_lines)):
                             line = original_lines[line_idx].strip()
                             if not line or not (line.startswith('|') or '|' in line):
                                 table_end = line_idx
                                 break
-                        if table_end is None:
-                            table_end = len(original_lines)
             else:
-                # 没找到table_close，使用启发式方法：直到遇到非表格行；若未遇到，则到文末
-                table_end = None
+                # 没找到table_close，使用启发式方法
+                table_end = table_start + 1
                 for line_idx in range(table_start, len(original_lines)):
                     line = original_lines[line_idx].strip()
                     if not line or not (line.startswith('|') or '|' in line):
                         table_end = line_idx
                         break
-                if table_end is None:
-                    table_end = len(original_lines)
             
-            # 提取表格内容（包含所有行直至 table_end）
+            # 提取表格内容
             table_content = '\n'.join(original_lines[table_start:table_end])
             
             current_content.append(table_content)
@@ -371,8 +439,6 @@ def process_markdown(md_text: str, max_length: int = 500) -> str:
             logger.warning(f"无法处理的token类型: {token.type}, 内容: {getattr(token, 'content', 'N/A')}")  # 添加调试信息
             i += 1
 
-    # 循环结束后，确保把最后一个段落刷入结果（无标题场景）
-    flush_content()
     if result and result[-1] == "-" * 10:
         result.pop()
 

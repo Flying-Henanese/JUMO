@@ -179,15 +179,6 @@ class DocumentIndex:
                     results.extend(pb.find_keyword(keyword))
         return results
 
-# Example usage
-if __name__ == '__main__':
-    with open('src/processor/middle.json', 'r', encoding='utf-8') as f:
-        mj = json.load(f)
-    doc_index = DocumentIndex.from_middle_json(mj)
-    hits = doc_index.search("computational")
-    print(json.dumps(hits, ensure_ascii=False, indent=2))
-
-
 class DocumentIndexService:
     def __init__(self):
         self.cache_service = CacheService()
