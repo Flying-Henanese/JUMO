@@ -16,6 +16,7 @@ class Task(Base):
     """
     任务列表
     记录所有的分析任务
+    这个类实现的作用就是把ORM模型转换为pydantic模型
     """
     # 表名
     __tablename__ = "tasks" 
@@ -67,7 +68,7 @@ class TaskResponse(BaseModel):
             pass
         return cls(
             task_id=task.task_id,
-            status=TaskStatus.COMPLETED if is_completed else TaskStatus.FAILED,
+            status=task.status,
             output_bucket=task.output_bucket,
             output_info=json.loads(task.output_info) if is_completed else None
             )
