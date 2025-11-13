@@ -11,14 +11,19 @@ import subprocess
 from celery.signals import worker_process_init
 
 def _parse_cuda_devices() -> list[str]:
+    """
+    读取环境变量中的cuda设备的信息
+    生成cuda设备列表
+    返回有所的设备为一个列表
+    """
     s = os.getenv("CUDA_VISIBLE_DEVICES", "").strip()
     if not s:
         return []
-    parts = [p.strip() for p in s.split(",") if p.strip() != ""]
-    return parts
+    gpu_units = [p.strip() for p in s.split(",") if p.strip() != ""]
+    return gpu_units
 
 def _queue_name_for(device: str | None) -> str:
-    return f"pdf_gpu{device}" if device else "pdf_cpu"
+    return "pdf_gpu" if device else "pdf_cpu"
 
 # 每个 worker 通过环境变量指定自身设备与队列；未指定时默认取全局列表的第一个
 ASSIGNED_DEVICE = os.getenv("WORKER_GPU_DEVICE")

@@ -8,6 +8,7 @@ database/
 backup/
 kernel_meta/
 poetry.lock
+output.log
 
 # Python cache directories
 __pycache__/
