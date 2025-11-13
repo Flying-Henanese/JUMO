@@ -34,7 +34,6 @@ UPLOAD_BUCKET = os.getenv('UPLOAD_BUCKET', 'uploads')
 @router.post("/drop-pdf")
 async def drop_pdf(
     pdf_path: str, 
-    background_tasks: BackgroundTasks, 
     bucket_name: str, 
     output_bucket: str,
     ocr_enabled: bool = False,
@@ -322,42 +321,33 @@ async def download_task_files(task_id: str):
 
 @router.post("/reprocess-task/{task_id}")
 async def reprocess_task(
-    task_id: str,
-    background_tasks: BackgroundTasks
+    task_id: str
 ):
     """
     重新处理指定任务（移除 ActiveTask，改为 Celery 入队）
     """
     try:
         # 获取原任务
-        task = task_repository.get_task_by_id(task_id)
+        task: Task = task_repository.get_task_by_id(task_id)
         if not task:
             raise HTTPException(status_code=404, detail="任务不存在")
-        
+
         # 检查任务是否已完成
         if task.finish_time is None:
             raise HTTPException(status_code=400, detail="任务尚未完成，无需重新处理")
-        
-
-        
-        # 如果有可用GPU且无其他活跃任务，则直接开始处理
-        if not task_repository.is_any_active_task() and gpu_pool.get_available_gpus():
-            active_task.status = TaskStatus.PROCESSING
-        elif task_repository.count_active_task() >= 20:
-            raise HTTPException(status_code=429, detail="队列已满，请稍后再试")
+        # 把任务放到celery队列中
+        process_pdf_task.delay(task_id)
         
         # 重置原任务状态（可选）
         task.finish_time = None
         task.output_info = ''
         task_repository.update_task(task)
-        
-        # 添加到活跃任务表
-        background_tasks.add_task(process_pdf_task, task)
-        
+        # 这里直接返回加入队列
+        # 尽管当前任务可能正在处理中
         return JSONResponse(content={
             "task_id": task_id,
-            "status": active_task.status,
-            "message": "任务已加入队列" if active_task.status == TaskStatus.QUEUED else "任务正在处理"
+            "status": TaskStatus.QUEUED,
+            "message": "任务已加入队列"
         })
         
     except HTTPException:

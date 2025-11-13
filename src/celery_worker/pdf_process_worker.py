@@ -99,6 +99,7 @@ def process_pdf_celery(self, task_id: str):
     return {"status": "ok", "task_id": task_id}
 
 # 自启动：按 CUDA_VISIBLE_DEVICES 自动生成多个 worker（每个设备一个）
+
 if __name__ == "__main__":
     os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
     devices = _parse_cuda_devices()
