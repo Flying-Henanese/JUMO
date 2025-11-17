@@ -3,7 +3,7 @@ from typing import Union
 import redis
 import redislite.patch as rpatch
 from redislite import Redis as EmbeddedRedis
-from utils.singleton import thread_safe_singleton
+from utils.singleton import parameterized_singleton
 import const.redis_constants as redis_constants
 import os
 from dotenv import load_dotenv
@@ -21,15 +21,18 @@ def get_redis_config_from_env():
         'decode_responses': False
     }
 
-@thread_safe_singleton
+@parameterized_singleton()
 class RedisClient:
     def __init__(
         self,
         mode: str = redis_constants.REDIS_MODE_EMBEDDED,
         external_config: dict = None,
         embedded_dbfile: str = None,
+        db: int = None,
     ):
         self.mode = mode
+        self.db = db if db is not None else int(os.getenv('REDIS_DB', 0))
+        
         # 如果使用内嵌redis服务
         if os.getenv('USE_INDEPENDENT_REDIS', '').lower() == "false":
             # 这里有点像是一个monkey patch，把redis标准的客户端重定向到内嵌的redis客户端
@@ -37,13 +40,21 @@ class RedisClient:
             rpatch.patch_redis(dbfile=embedded_dbfile)
             # 这里设置decode_responses=False，因为我们需要原始的字节数据，后续使用pickle进行反序列化
             self.client = EmbeddedRedis(dbfilename=embedded_dbfile, decode_responses=False) if embedded_dbfile else EmbeddedRedis()
+            # 对于内嵌Redis，使用SELECT命令切换数据库
+            self.client.execute_command('SELECT', self.db)
         # 如果使用外部独立redis服务
         else:
             # 这里需要unpatch，因为如果之前使用了内嵌的redis服务，那么这里需要把连接重定向到外部的redis服务
             # 虽然这里和上面的分支是互斥的，但作为防御性措施，防止出现问题
             rpatch.unpatch_redis()
-            # 使用环境变量配置连接外部redis服务
-            pool = redis.ConnectionPool(**(get_redis_config_from_env() or {}))
+            # 获取基本配置并更新数据库编号
+            config = get_redis_config_from_env() or {}
+            # 使用创建连接的时候指定的数据库编号来覆盖配置文件中的db编号
+            config['db'] = self.db  # 使用指定的数据库编号
+            # 使用外部配置（如果提供）
+            if external_config:
+                config.update(external_config)
+            pool = redis.ConnectionPool(**config)
             self.client = redis.Redis(connection_pool=pool, decode_responses=False)
 
     def get_client(self) -> Union[redis.Redis, EmbeddedRedis]:

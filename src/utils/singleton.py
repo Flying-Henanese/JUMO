@@ -24,13 +24,15 @@ def thread_safe_singleton(cls):
     
     return get_instance
 
-
 def class_singleton(cls):
     """
     改进的线程安全单例装饰器
     保持类的类型不变，支持 super()、isinstance() 等类特性
     """
     import threading
+    # 字典的设计允许 同一个装饰器 为 多个不同的类 分别实现单例模式
+    # 如果使用单个变量，那么就只能为一个类实现单例模式
+    # 其次，Python的类对象是可哈希的，可作为字典的键
     instances = {}
     lock = threading.Lock()
 
@@ -54,6 +56,7 @@ def class_singleton(cls):
     SingletonWrapper.__qualname__ = cls.__qualname__
     SingletonWrapper.__module__ = cls.__module__
     
+    # 很有意思的一个点，这里返回的是 SingletonWrapper 类，而不是实例
     return SingletonWrapper
 
 
@@ -115,5 +118,8 @@ def parameterized_singleton(key_func=None):
         ParameterizedSingletonWrapper.__module__ = cls.__module__
         
         return ParameterizedSingletonWrapper
-    
+
+    # 很有意思的一个点，这里返回的是decorator函数，而不是实例
+    # 因为Python装饰器等于是一个高阶函数，它接受一个函数作为参数，返回一个新的函数
+    # 这里的高阶函数和数学中函数的概念是一样的，其实这个概念正式源自于数学中的high-order function
     return decorator
