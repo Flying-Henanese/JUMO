@@ -2,7 +2,7 @@ from loguru import logger
 import os
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 # from processor.vlm_mode import PDFProcessor  # 移除顶层导入，避免父进程初始化 CUDA
-from celery_worker.celery_server import celery_app
+from celery_worker.celery_server import celery_app, DEFAULT_QUEUE_NAME
 from data.operation import TaskRepository
 from utils.minio_tool import MinioConnection
 from data.model import Task
@@ -10,24 +10,10 @@ from const.task_status_enum import TaskStatus
 import subprocess
 from celery.signals import worker_process_init
 
-def _parse_cuda_devices() -> list[str]:
-    """
-    读取环境变量中的cuda设备的信息
-    生成cuda设备列表
-    返回有所的设备为一个列表
-    """
-    s = os.getenv("CUDA_VISIBLE_DEVICES", "").strip()
-    if not s:
-        return []
-    gpu_units = [p.strip() for p in s.split(",") if p.strip() != ""]
-    return gpu_units
-
-def _queue_name_for(device: str | None) -> str:
-    return "pdf_gpu" if device else "pdf_cpu"
+from celery_worker.celery_server import parse_cuda_devices as _parse_cuda_devices, DEFAULT_QUEUE_NAME
 
 # 每个 worker 通过环境变量指定自身设备与队列；未指定时默认取全局列表的第一个
-ASSIGNED_DEVICE = os.getenv("WORKER_GPU_DEVICE")
-DEFAULT_QUEUE_NAME = os.getenv("WORKER_QUEUE_NAME", _queue_name_for(ASSIGNED_DEVICE))
+
 
 _repo = None
 _minio = None
@@ -37,7 +23,8 @@ _processor = None
 def _init_services(**kwargs):
     global _repo, _minio, _processor
     devices = _parse_cuda_devices()
-    device = ASSIGNED_DEVICE or (devices[0] if devices else None)
+    assigned = os.getenv("WORKER_GPU_DEVICE")
+    device = assigned or (devices[0] if devices else None)
     if device:
         os.environ["CUDA_VISIBLE_DEVICES"] = str(device)
     try:
@@ -90,14 +77,8 @@ def process_pdf_celery(self, task_id: str):
     finally:
         db.close()
 
-    # 完成当前任务并调度下一个
     try:
-        next_task = repo.complete_task(task_id, succeeded=succeeded)
-        if next_task:
-            logger.info(f"从队列调度下一个任务: {next_task.task_id}")
-            process_pdf_celery.delay(next_task.task_id)
-        else:
-            logger.info("队列为空，暂无下一个任务")
+        repo.complete_task(task_id, succeeded=succeeded)
     except Exception as e:
         logger.error(f"complete_task 失败: {e}")
 
@@ -107,19 +88,48 @@ def process_pdf_celery(self, task_id: str):
 
 if __name__ == "__main__":
     os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
     devices = _parse_cuda_devices()
     if not devices:
         devices = [None]  # CPU 回退
+    
     procs = []
     for d in devices:
-        q = _queue_name_for(d)
         env = os.environ.copy()
+        q = os.getenv("WORKER_QUEUE_NAME", DEFAULT_QUEUE_NAME)
+        env["WORKER_QUEUE_NAME"] = q
         if d is not None:
             env["WORKER_GPU_DEVICE"] = str(d)
-        env["WORKER_QUEUE_NAME"] = q
+            worker_name = f"worker_{q}_{d}@%h"
+        else:
+            worker_name = f"worker_{q}_cpu@%h"
+        # Celery 应用模块路径（-A），用于定位任务与配置
+        celery_app = "src.celery_worker.pdf_process_worker"
+        # Worker 监听的队列名（-Q），决定消费哪个队列
+        queue_name = DEFAULT_QUEUE_NAME
+        # Worker 节点名称（-n），包含设备信息以保证唯一
+        node_name = worker_name
+        # 并发度（--concurrency），此处为 1 以避免资源争用
+        concurrency = "1"
+        # 池类型（-P），使用 threads 以避免 prefork 守护进程限制
+        pool_type = "threads"
+        # 禁用 mingle：启动时不握手，降低事件开销
+        without_mingle_flag = "--without-mingle"
+        # 禁用 gossip：关闭集群状态广播，降低开销
+        without_gossip_flag = "--without-gossip"
+        # 禁用心跳：减少与 broker 的心跳检查带来的 CPU 负载
+        without_heartbeat_flag = "--without-heartbeat"
         cmd = [
-            "celery", "-A", "src.celery_worker.pdf_process_worker", "worker",
-            "-Q", q, "-n", f"worker_{q}@%h", "--concurrency", "1", "-P", "solo",
+            "poetry", "run", "celery",
+            "-A", celery_app,
+            "worker",
+            "-Q", queue_name,
+            "-n", node_name,
+            "--concurrency", concurrency,
+            "-P", pool_type,
+            without_mingle_flag,
+            without_gossip_flag,
+            without_heartbeat_flag,
         ]
         procs.append(subprocess.Popen(cmd, env=env))
     for p in procs:

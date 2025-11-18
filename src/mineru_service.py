@@ -11,7 +11,7 @@ if __name__ == "__main__":
     from route.pdf_route import router as pdf_router
     from route.documents_route import router as documents_router
     from route.content_searching_route import router as content_searching_router
-    from route.knowledgebase_api_route import router as knowledgebase_api_route
+    # from route.knowledgebase_api_route import router as knowledgebase_api_route
     from fastapi import FastAPI
     # 预加载vlm模型
     # from processor.warmup.vlm_predictor_warmup import predictor

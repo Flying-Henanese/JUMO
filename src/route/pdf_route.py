@@ -12,7 +12,6 @@ from const.ocr_lang_enum import OCRLanguage
 from data.model import Task
 from utils.id_generator import generate_short_uuid
 from const.task_status_enum import TaskStatus
-from processor.tasking.pdf_task import process_pdf_task
 from startup import task_repository,minio_tool
 from fastapi import UploadFile, File
 from typing import List
@@ -23,7 +22,7 @@ import os
 from fastapi.responses import StreamingResponse
 from io import BytesIO
 import zipfile
-from celery_worker.celery_server import parse_queue_names_from_env, choose_queue_by_least_backlog, send_pdf_task
+from celery_worker.celery_server import DEFAULT_QUEUE_NAME, get_queue_length, send_pdf_task
 
 # 实例化资源
 router = APIRouter()
@@ -51,9 +50,7 @@ async def drop_pdf(
         minio_tool.file_exists(bucket_name=bucket_name, object_name=pdf_path)
     except S3Error:
         raise HTTPException(status_code=404, detail="PDF文件未找到")
-
     task_id = generate_short_uuid()
-
     try:
         task_to_add = Task(
             task_id=task_id,
@@ -70,28 +67,11 @@ async def drop_pdf(
             status=TaskStatus.QUEUED,
         )
 
-        # # 这里先写一个固定值，后续需要先读取队列中的执行情况再判断是否塞入
-        # if task_repository.count_processing_task() <  MAX_WORKERS:
-        #     task_to_add.status = TaskStatus.PROCESSING
-        # elif task_repository.count_active_task() >= 20:
-        #     return JSONResponse(content={
-        #         "task_id": "",
-        #         "status": TaskStatus.FAILED,
-        #         "message": "队列已满，请稍后再试"
-        #     })
-        # else:
-        #     # 这里不用管，因为默认就是 QUEUED 状态
-        #     # 只是为了保持代码的完整性和可读性
-        #     pass 
-
         task_repository.create_task(task_to_add)
 
-        # 移除本地 BackgroundTasks 执行，改为纯 Celery 入队
-        # background_tasks.add_task(process_pdf_task, task_to_add)
-
-        # 入队前检查 backlog + 选择队列 + 派发任务
-        queue_names = parse_queue_names_from_env()
-        target_queue, backlog = choose_queue_by_least_backlog(queue_names)
+        # 入队前检查 backlog + 派发到默认队列
+        target_queue = DEFAULT_QUEUE_NAME
+        backlog = get_queue_length(target_queue)
 
         if backlog >= MAX_QUEUING_TASKS:
             return JSONResponse(content={
@@ -167,7 +147,6 @@ async def analyze_pdf(
         task_repository.create_task(task_to_add)
         # 标记为处理中，便于状态统计与前端展示
         task_repository.activate_task_by_id(task_id, TaskStatus.PROCESSING)
-        background_tasks.add_task(process_pdf_task, task_to_add)
 
         return JSONResponse(content={
             "task_id": task_id,
@@ -245,7 +224,6 @@ async def upload_and_analyze_pdf(
 
         task_repository.create_task(task_to_add)
         task_repository.activate_task_by_id(task_id, TaskStatus.PROCESSING)
-        background_tasks.add_task(process_pdf_task, task_to_add)
 
         return JSONResponse(content={
             "task_id": task_id,
@@ -336,7 +314,7 @@ async def reprocess_task(
         if task.finish_time is None:
             raise HTTPException(status_code=400, detail="任务尚未完成，无需重新处理")
         # 把任务放到celery队列中
-        process_pdf_task.delay(task_id)
+        send_pdf_task(task_id)
         
         # 重置原任务状态（可选）
         task.finish_time = None

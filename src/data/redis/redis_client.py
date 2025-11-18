@@ -28,6 +28,7 @@ class RedisClient:
         mode: str = redis_constants.REDIS_MODE_EMBEDDED,
         external_config: dict = None,
         embedded_dbfile: str = None,
+        db_index: int = None,
     ):
         self.mode = mode
         # 如果使用内嵌redis服务
@@ -43,7 +44,10 @@ class RedisClient:
             # 虽然这里和上面的分支是互斥的，但作为防御性措施，防止出现问题
             rpatch.unpatch_redis()
             # 使用环境变量配置连接外部redis服务
-            pool = redis.ConnectionPool(**(get_redis_config_from_env() or {}))
+            cfg = external_config or (get_redis_config_from_env() or {})
+            if db_index is not None:
+                cfg['db'] = db_index
+            pool = redis.ConnectionPool(**cfg)
             self.client = redis.Redis(connection_pool=pool, decode_responses=False)
 
     def get_client(self) -> Union[redis.Redis, EmbeddedRedis]:
