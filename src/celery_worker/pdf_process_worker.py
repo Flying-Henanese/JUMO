@@ -37,6 +37,18 @@ def _init_services(**kwargs):
         _repo = TaskRepository()
     if _minio is None:
         _minio = MinioConnection()
+    # 给mineru后端的合并列表和文本的函数添加猴子补丁，避免空值等问题
+    if not globals().get("_patched"):
+        try:
+            from wrapper.merge_text import safe_merge_2_list_blocks, safe_merge_2_text_blocks
+            import mineru.backend.pipeline.para_split as para_split
+            para_split.__merge_2_list_blocks = safe_merge_2_list_blocks
+            para_split.__merge_2_text_blocks = safe_merge_2_text_blocks
+            from processor.converters.table_to_markdown import patch_batchanalyze_output_to_markdown
+            patch_batchanalyze_output_to_markdown()
+        except Exception:
+            pass
+        globals()["_patched"] = True
     if _processor is None:
         from processor.vlm_mode import PDFProcessor
         _processor = PDFProcessor(minio_tool=_minio, task_repository=_repo)

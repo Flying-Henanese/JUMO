@@ -31,7 +31,7 @@ class RedisClient:
         db_index: int = None,
     ):
         self.mode = mode
-        self.db = db if db is not None else int(os.getenv('REDIS_DB', 0))
+        self.db = db_index if db_index is not None else int(os.getenv('REDIS_DB', 0))
         
         # 如果使用内嵌redis服务
         if os.getenv('USE_INDEPENDENT_REDIS', '').lower() == "false":
@@ -58,4 +58,3 @@ class RedisClient:
         return self.client
 
 # 移除 get_redis_client 函数，直接使用 RedisClient 类
-
