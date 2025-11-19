@@ -1,5 +1,6 @@
 from loguru import logger
 import os
+from .celery_config import settings  # 集中配置
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 # from processor.vlm_mode import PDFProcessor  # 移除顶层导入，避免父进程初始化 CUDA
 from celery_worker.celery_server import celery_app, DEFAULT_QUEUE_NAME
@@ -99,8 +100,9 @@ def process_pdf_celery(self, task_id: str):
 # 自启动：按 CUDA_VISIBLE_DEVICES 自动生成多个 worker（每个设备一个）
 
 if __name__ == "__main__":
-    os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+    os.environ.setdefault('HF_ENDPOINT', settings.HF_ENDPOINT)
+    os.environ.setdefault('CUDA_VISIBLE_DEVICES', settings.CUDA_VISIBLE_DEVICES)
+    # 不再硬编码 CUDA_VISIBLE_DEVICES，由部署环境注入
     devices = _parse_cuda_devices()
     if not devices:
         devices = [None]  # CPU 回退

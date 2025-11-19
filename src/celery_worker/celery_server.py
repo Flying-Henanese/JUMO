@@ -4,6 +4,8 @@ from data.redis.redis_client import get_redis_config_from_env, RedisClient
 from utils.logging import setup_logger
 setup_logger()
 from loguru import logger
+from .celery_config import settings, build_redis_url, DEFAULT_QUEUE_NAME
+
 # 这个后续会放到dockerfile中
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
 
@@ -19,28 +21,49 @@ def build_redis_url(db_index: int) -> str:
         return f"redis://{username}:{password}@{host}:{port}/{db_index}"
     return f"redis://{host}:{port}/{db_index}"
 
-broker_url = os.getenv("CELERY_BROKER_URL") or build_redis_url(0)
-result_backend = os.getenv("CELERY_RESULT_BACKEND") or build_redis_url(1)
+broker_url = settings.CELERY_BROKER_URL or build_redis_url(0)
+result_backend = settings.CELERY_RESULT_BACKEND or build_redis_url(1)
 
 # 这里的celery_app等于是一个celery的客户端实例
 # 生产者和消费者都要引用这个模块来访问celery队列, 来发送任务或者接收任务
-celery_app: Celery = Celery("mineru_pdf", broker=broker_url, backend=result_backend)
+celery_app: Celery = Celery(
+    # 这里的main是celery的app name，不起实际作用
+    main="mineru_pdf", 
+    # broker是celery的消息队列，这里用的是redis
+    broker=broker_url, 
+    # 值得注意的是这里消息和结果放在了两个不同的redis db中
+    backend=result_backend
+    )
+
 celery_app.conf.update(
+    # 任务序列化格式使用 JSON，避免不安全的 pickle；生产环境更安全
     task_serializer="json",
+    # 仅接受 JSON 内容，拒绝其它格式（如 pickle），提升安全性与一致性
     accept_content=["json"],
+    # 任务结果序列化为 JSON，便于后端存储与调试查看
     result_serializer="json",
+    # 指定任务/日志时区为上海
     timezone="Asia/Shanghai",
+    # 禁用 UTC，配合上面的本地时区；如需跨区统一时间可改为 True
     enable_utc=False,
+    # 每个 worker 一次只预取 1 条，避免任务堆积在单个 worker，提升公平性
+    # 注意！：曾经试过把这个设为0，结果是worker反而会饥不择食疯狂消费，导致你根本找不到有等待处理的任务（因为都被worker扒自己碗里了）
     worker_prefetch_multiplier=1,
+    # 任务处理完成后才确认（ack）；异常/崩溃时可重投递，提升可靠性
+    # 注意！：但是会造成一个任务多次执行的问题（因为任务在执行过程中如果中断，还来不及更新ack，下次重启就会被认为这个任务还未执行）
     task_acks_late=True,
+    # 关闭 worker 远程控制（广播），减少开销与安全面；如需 Flower 控制可开启
     worker_enable_remote_control=False,
+    # 关闭任务事件上报，降低监控事件流开销；如需实时监控（Flower）可开启
     worker_send_task_events=False,
+    # 关闭 broker 心跳（或交由传输层处理），避免某些网络环境中心跳干扰
     broker_heartbeat=0,
+    # Broker 连接健康检查间隔（秒），定期保活并快速发现连接问题
     broker_transport_options={"health_check_interval": 30},
 )
 
 # 默认队列名称的单一来源，供 worker 任务装饰器与生产者参考
-DEFAULT_QUEUE_NAME = os.getenv("WORKER_QUEUE_NAME", "celery")
+DEFAULT_QUEUE_NAME = settings.WORKER_QUEUE_NAME
 
 def parse_cuda_devices() -> list[str]:
     """
