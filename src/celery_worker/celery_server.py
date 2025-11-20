@@ -9,6 +9,9 @@ from .celery_config import settings, build_redis_url, DEFAULT_QUEUE_NAME
 # 这个后续会放到dockerfile中
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
 
+# 模块常量：统一任务名
+TASK_NAME_PROCESS_PDF = "process_pdf"
+
 # 用于生成celery broker和result backend的redis url
 # 其实就是拼出来一个redis连接串
 def build_redis_url(db_index: int) -> str:
@@ -65,16 +68,7 @@ celery_app.conf.update(
 # 默认队列名称的单一来源，供 worker 任务装饰器与生产者参考
 DEFAULT_QUEUE_NAME = settings.WORKER_QUEUE_NAME
 
-def parse_cuda_devices() -> list[str]:
-    """
-    解析环境变量 CUDA_VISIBLE_DEVICES，以逗号分隔并去除空白。
-    示例: CUDA_VISIBLE_DEVICES=0,1,2 -> ['0','1','2']
-    若未设置或为空，返回空列表。
-    """
-    s = os.getenv("CUDA_VISIBLE_DEVICES", "").strip()
-    if not s:
-        return []
-    return [p.strip() for p in s.split(",") if p.strip()]
+
 
 # 这些函数是给生产者用的，用来查询队列长度
 # 这个模块上方的celery_app不会被重复实例化，因为路由部分的进程只有一个
@@ -123,4 +117,4 @@ def send_pdf_task(task_id: str, queue: str) -> None:
     """
     通过任务名进行派发，避免在生产者侧导入沉重的 worker 模块。
     """
-    celery_app.send_task("process_pdf", args=[task_id], queue=queue)
+    celery_app.send_task(TASK_NAME_PROCESS_PDF, args=[task_id], queue=queue)

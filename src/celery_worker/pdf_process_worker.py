@@ -3,7 +3,8 @@ import os
 from .celery_config import settings  # 集中配置
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 # from processor.vlm_mode import PDFProcessor  # 移除顶层导入，避免父进程初始化 CUDA
-from celery_worker.celery_server import celery_app, DEFAULT_QUEUE_NAME
+from celery_worker.celery_server import celery_app, DEFAULT_QUEUE_NAME, TASK_NAME_PROCESS_PDF
+from .celery_config import parse_cuda_devices as _parse_cuda_devices
 from data.operation import TaskRepository
 from utils.minio_tool import MinioConnection
 from data.model import Task
@@ -11,10 +12,7 @@ from const.task_status_enum import TaskStatus
 import subprocess
 from celery.signals import worker_process_init
 
-from celery_worker.celery_server import parse_cuda_devices as _parse_cuda_devices, DEFAULT_QUEUE_NAME
-
 # 每个 worker 通过环境变量指定自身设备与队列；未指定时默认取全局列表的第一个
-
 
 _repo = None
 _minio = None
@@ -54,7 +52,14 @@ def _init_services(**kwargs):
         from processor.vlm_mode import PDFProcessor
         _processor = PDFProcessor(minio_tool=_minio, task_repository=_repo)
 
-@celery_app.task(name="process_pdf", bind=True, queue=DEFAULT_QUEUE_NAME)
+@celery_app.task(
+    # 任务名：生产者侧会用send_task("process_pdf", ...)按此名称派发，需与注册名严格一致，所以这里使用预定义常量
+    name=TASK_NAME_PROCESS_PDF, 
+    # 绑定任务实例：允许在函数内通过 self 访问上下文（如 self.request、重试等）
+    bind=True, 
+    # 默认队列：任务若未显式指定 queue，将路由到该队列；生产者可用 send_task(queue=...) 覆盖
+    queue=DEFAULT_QUEUE_NAME
+)
 def process_pdf_celery(self, task_id: str):
     """
     在独立的 Celery worker 进程中执行 PDF 处理任务。

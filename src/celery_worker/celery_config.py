@@ -15,7 +15,16 @@ class Settings:
 settings = Settings()
 
 def build_redis_url(db_index: int) -> str:
+    """
+    从环境变量中获取 Redis 配置，构建 Redis URL。
+
+    :param db_index: Redis db数据库索引
+    :return: 格式化后的 Redis URL
+    
+    """
     from data.redis.redis_client import get_redis_config_from_env
+    # 从redis客户端获取配置
+    # 这样的话可以和其他的模块共享配置（当前只有原文索引功能使用了redis）
     cfg = get_redis_config_from_env()
     host = cfg.get("host", "localhost")
     port = cfg.get("port", 6379)
@@ -26,6 +35,12 @@ def build_redis_url(db_index: int) -> str:
     return f"redis://{host}:{port}/{db_index}"
 
 def parse_cuda_devices() -> list[str]:
+    """
+    从环境变量中获取 CUDA_VISIBLE_DEVICES 配置，解析为设备列表。
+    用于后续的 Celery 任务分配到不同的 GPU 设备上。
+    
+    :return: 解析后的 CUDA 设备列表
+    """
     s = settings.CUDA_VISIBLE_DEVICES
     if not s:
         return []
