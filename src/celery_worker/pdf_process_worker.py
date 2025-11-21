@@ -100,7 +100,7 @@ def process_pdf_celery(self, task_id: str):
 
 if __name__ == "__main__":
     os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1,2,3'
     devices = _parse_cuda_devices()
     if not devices:
         devices = [None]  # CPU 回退
@@ -123,8 +123,8 @@ if __name__ == "__main__":
         node_name = worker_name
         # 并发度（--concurrency），此处为 1 以避免资源争用
         concurrency = "1"
-        # 池类型（-P），使用 threads 以避免 prefork 守护进程限制
-        pool_type = "threads"
+        # 池类型（-P），使用 solo 以允许任务内部安全地派生子进程
+        pool_type = "solo"
         # 禁用 mingle：启动时不握手，降低事件开销
         without_mingle_flag = "--without-mingle"
         # 禁用 gossip：关闭集群状态广播，降低开销

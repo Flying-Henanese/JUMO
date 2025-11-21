@@ -32,3 +32,19 @@ def office_bytes_to_pdf_bytes(word_bytes: bytes, suffix:str=".docx") -> bytes:
         # 读取并返回PDF字节流
         return output_path.read_bytes()
 
+
+def office_bytes_to_docx_bytes(word_bytes: bytes, suffix: str = ".doc") -> bytes:
+    """将旧版 Word (.doc) 字节流转换为 .docx 字节流，便于后续 markdown 处理"""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir_path = Path(tmpdir)
+        input_path = tmpdir_path / f"input{suffix}"
+        output_path = tmpdir_path / "input.docx"
+        input_path.write_bytes(word_bytes)
+        subprocess.run([
+            "soffice",
+            "--headless",
+            "--convert-to", "docx",
+            str(input_path),
+            "--outdir", str(tmpdir_path)
+        ], check=True)
+        return output_path.read_bytes()

@@ -1,17 +1,16 @@
 from markdown_it import MarkdownIt
 from mdit_py_plugins.dollarmath import dollarmath_plugin
 import re
+import os
+os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 from sentence_transformers import SentenceTransformer
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.metrics import silhouette_score
 import nltk
 from nltk.tokenize import sent_tokenize
-import os
 import threading
 from loguru import logger
-from .named_entity_recognition import extract_entities_auto
-
-
+#from .named_entity_recognition import extract_entities_auto
 DEVICE_MODE = os.getenv("DEFAULT_CUDA_DEVICE", "0") # 选择CUDA设备
 # 确保 punkt_tab 可用
 # 首先检测是否已存在punkt_tab模型
@@ -188,7 +187,7 @@ def semantic_chunking_with_auto_clusters(text, max_chunk_size=500, model_id="BAA
 
     return chunks
 
-def process_markdown(md_text: str, max_length: int = 800) -> str:
+def process_markdown(md_text: str, max_length: int = 500) -> str:
     """
     使用 markdown-it-py 处理markdown文本，根据标题结构和内容长度进行分割。
     表格作为不可分割的元素，会直接复制到结果中。
@@ -217,6 +216,28 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
         """
         return '|'.join([t for t in title_stack if t])
 
+    def infer_heading_level(title: str) -> int:
+        """
+        通过标题前缀编号推断层级，例如 1., 1.2, 1.2.3 或中文编号“一、”
+        """
+        # 匹配数字编号标题前缀，如 "1"、"1.2"、"1.2.3"
+        # ^\s*：起始处的可选空白
+        # (\d+(?:\.\d+)*)：至少一个数字，后面可跟多个".数字"片段，整体作为捕获组
+        # [.)、]?：可选的分隔符（英文点 .、右括号 )、中文顿号 、）
+        # \s*：分隔符后的可选空白
+        m = re.match(r'^\s*(\d+(?:\.\d+)*)[.)、]?\s*', title)
+        if m:
+            return max(1, min(len(m.group(1).split('.')), 6))
+        # 匹配中文编号标题前缀，如 "一、"、"二." 等
+        # ^\s*：起始处的可选空白
+        # [一二三四五六七八九十百千]+：至少一个中文数字字符
+        # [、.]：必须跟随中文顿号 "、" 或英文点 "."
+        # \s*：分隔符后的可选空白
+        m_zh = re.match(r'^\s*[一二三四五六七八九十百千]+[、.]\s*', title)
+        if m_zh:
+            return 1
+        return 1
+
     def get_current_level():
         """
         获取当前标题层级（找到最高级的非空标题）
@@ -241,35 +262,10 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
 
         level = get_current_level()
         title_path = get_title_path()
-        
-        # 提取实体并添加到标题中
-        entities_str = ""
-        try:
-            # 提取实体，限制数量为3个，置信度阈值为0.7
-            entities = extract_entities_auto(content, confidence_threshold=0.7, entity_num=3)
-            if entities:
-                # 按类型分组实体
-                entity_by_type = {}
-                for entity in entities:
-                    entity_type = entity['entity_group']
-                    entity_text = entity['entity']
-                    if entity_type not in entity_by_type:
-                        entity_by_type[entity_type] = []
-                    entity_by_type[entity_type].append(entity_text)
-                
-                # 构建实体字符串
-                entity_parts = []
-                for entity_type, entity_list in entity_by_type.items():
-                    entity_parts.append(f"{entity_type}:{','.join(entity_list)}")
-                
-                if entity_parts:
-                    entities_str = f"|Entities[{';'.join(entity_parts)}]"
-        except Exception as e:
-            logger.warning(f"实体识别失败: {e}")
-        
+          
         # 如果当前段落为表格，直接复制
         if special_element:
-            header = f"{'#' * level} {title_path}|{special_element}{entities_str}" if title_path else f"{'#' * level} {special_element}{entities_str}"
+            header = f"{'#' * level} {title_path}|{special_element}" if title_path else f"{'#' * level} {special_element}"
             result.extend([header, content, "-" * 10])
         else:
             # 处理普通的文本段落
@@ -279,10 +275,10 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
                 # 使用句子语义近似程度切分
                 chunks = semantic_chunking_with_auto_clusters(content, max_chunk_size=max_length)
                 for i, chunk in enumerate(chunks, 1):
-                    header = f"{'#' * level} {title_path}|Part {i}{entities_str}" if title_path else f"{'#' * level} Part {i}{entities_str}"
+                    header = f"{'#' * level} {title_path}|Part {i}" if title_path else f"{'#' * level} Part {i}"
                     result.extend([header, chunk, "-" * 10])
             else:
-                header = f"{'#' * level} {title_path}{entities_str}" if title_path else f"{'#' * level} {entities_str}" if entities_str else ""
+                header = f"{'#' * level} {title_path}" if title_path else f"{'#' * level}"
                 if header:
                     result.append(header)
                     result.append("")  # 添加空行分隔标题和内容
@@ -291,18 +287,18 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
 
     i = 0
     while i < len(tokens):
-        token = tokens[i]
+        token = tokens[i]   
         # 标题处理
         if token.type == "heading_open":
-            flush_content()# 因为这是一个新的标题，所以要先把此前的内容放到result中
-            level = int(token.tag[1]) # 是标题的HTML标签（如 h1 、 h2 ），通过取标签的第二个字符（数字部分）转换为整数，得到标题层级。
-            inline_token = tokens[i + 1] # 获取标题的内容
-            if inline_token.type == "inline": # 如果是inline类型，则提取其中的内容（标题的内容）
-                title_stack[level - 1] = inline_token.content.strip() # 把标题内容放在标题栈中
-                # 清空比当前标题更深的标题（可能是在上一个章节遗留下来的）
+            flush_content()
+            inline_token = tokens[i + 1]
+            if inline_token.type == "inline":
+                full_title = inline_token.content.strip()
+                level = infer_heading_level(full_title)
+                title_stack[level - 1] = full_title
                 for j in range(level, 6):
                     title_stack[j] = ""
-            i += 3  # skip heading_open, inline, heading_close，proceed to next block
+            i += 3
             continue
 
         # 表格处理（整个复制）
@@ -420,7 +416,7 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
             flush_content(special_element=token.type)  # 立即处理HTML块
             i += 1
             continue
-            
+        
         # 跳过列表相关的关闭标签（已在上面处理）
         elif token.type in ["list_item_close", "ordered_list_close", "bullet_list_close", "list_item_open"]:
             i += 1
@@ -447,19 +443,15 @@ def process_markdown(md_text: str, max_length: int = 800) -> str:
 
 # region
 # 测试代码
-# if __name__ == "__main__":
-#     # from .converters.doc_to_markdown import doc_to_markdown 
-#     # file = '/Users/zhoushujian/Downloads/运维.docx'
-#     # md_text = doc_to_markdown(file)
-#     # with open("original_运维.md", 'w', encoding='utf-8') as f:
-#     #     f.write(md_text)
-#     with open("test.md", 'r', encoding='utf-8') as f:
-#         md_text = f.read()
-#     processed_md = process_markdown(md_text, max_length=500) 
-#     # import subprocess
-#     out_file = "processed_运维.md"
-#     with open(out_file, 'w', encoding='utf-8') as f:
-#         f.write(processed_md)    
-#     print(f'处理后的markdown文件已保存到{out_file},现在来看看效果')
-#     # subprocess.run(['open',out_file])
+if __name__ == "__main__":
+    # 使用cuda:3设备进行推理
+    os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+    os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
+    with open("tests/test_resource/dqfd.md", 'r', encoding='utf-8') as f:
+        md_text = f.read()
+    processed_md = process_markdown(md_text, max_length=500) 
+    out_file = "tests/test_resource/processed_dqfd.md"
+    with open(out_file, 'w', encoding='utf-8') as f:
+        f.write(processed_md)    
+    print(f'处理后的markdown文件已保存到{out_file},现在来看看效果')
 # # endregion

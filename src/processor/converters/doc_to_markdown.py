@@ -7,6 +7,8 @@ import os
 import re
 from startup import minio_tool
 from PIL import Image
+from docling_core.transforms.serializer.markdown import MarkdownDocSerializer
+from docling_core.types.doc.document import DOCUMENT_TOKENS_EXPORT_LABELS
 
 """
 转换word文档为markdown格式(基于docling实现)
@@ -35,10 +37,12 @@ def doc_to_markdown(
     result = converter.convert(input_data)
     # 对result.document进行处理,去除目录信息
     # 然后输出为markdown格式
-    processed_doc = _remove_toc(result.document)
+    processed_doc = result.document
     # 处理caption与表格/图片的合并,失败了，以后再完善吧
     # processed_doc = _merge_captions_with_content(processed_doc)
-    md_content = processed_doc.export_to_markdown()
+    md_serializer = MarkdownDocSerializer(doc=processed_doc)
+    allowed_labels = {l for l in DOCUMENT_TOKENS_EXPORT_LABELS if l != DocItemLabel.DOCUMENT_INDEX}
+    md_content = md_serializer.serialize(labels=allowed_labels).text
     # 把文档中的图片提取出来
     # 1. 首先放入minio中
     # 2. 把所有图片的url替换为minio中的url,用于后续前端应用读取图片进行渲染
@@ -99,7 +103,7 @@ def _remove_toc(doc: DoclingDocument) -> DoclingDocument:
 
     # --- 执行删除 ---
     if items_to_delete:
-        doc.delete_items(items_to_delete)
+        doc.delete_items(node_items=items_to_delete)
 
     return doc
 
@@ -133,7 +137,7 @@ def _insert_images_to_markdown(
                 if image:
                     # 生成图片文件名
                     image_filename = f"image_{image_counter}.png"
-                    image_path = os.path.join(task_id, image_filename)
+                    image_path = os.path.join(task_id,"images", image_filename)
                     image_counter += 1
                     # 上传图片到minio
                     if not bucket:
@@ -224,7 +228,7 @@ def _merge_captions_with_content(doc: DoclingDocument) -> DoclingDocument:
     
     # 删除已经合并的caption元素
     if items_to_delete:
-        doc.delete_items(items_to_delete)
+        doc.delete_items(node_items=items_to_delete)
     
     return doc
 

@@ -17,7 +17,7 @@ export MINERU_MODEL_SOURCE=modelscope
 export MINERU_VLM_FORMULA_ENABLE=true
 export MINERU_VLM_TABLE_ENABLE=true
 # 指定要使用的CUDA设备编号
-export CUDA_VISIBLE_DEVICES="3"
+export CUDA_VISIBLE_DEVICES="0,1,2,3"
 # 可选：设置MinerU设备模式（如果需要指定特定设备）
 # 前面已经制定了cuda:7，这里可以指定为cuda:0
 export MINERU_DEVICE_MODE=cuda:0

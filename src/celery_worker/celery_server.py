@@ -5,7 +5,7 @@ from utils.logging import setup_logger
 setup_logger()
 from loguru import logger
 # 这个后续会放到dockerfile中
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '1,2,3'
 
 # 用于生成celery broker和result backend的redis url
 # 其实就是拼出来一个redis连接串
@@ -35,7 +35,7 @@ celery_app.conf.update(
     task_acks_late=True,
     worker_enable_remote_control=False,
     worker_send_task_events=False,
-    broker_heartbeat=0,
+    broker_heartbeat=10,
     broker_transport_options={"health_check_interval": 30},
 )
 

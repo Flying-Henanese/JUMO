@@ -138,6 +138,85 @@ def analyze_document(
             data=None
         )
 
+@router.post("/analyze-office-dir")
+def analyze_office_dir(
+    dir_path: str,
+    bucket_name: str,
+    output_bucket: str,
+    processing_type: str = "0",
+    max_heading_chunk_size: int = 1024,
+    fallback_chunk_size: int = 1024
+):
+    try:
+        objects = minio_tool.list_objects(bucket_name=bucket_name, prefix=dir_path, recursive=True)
+        if not objects:
+            raise HTTPException(status_code=404, detail="目录下没有文件")
+        results = []
+        for obj in objects:
+            file_name, file_ext = os.path.splitext(obj)
+            file_name = file_name.split('/')[-1]
+            if (file_ext not in WORD_EXTENTIONS) and (file_ext not in EXCEL_EXTENTIONS) and (file_ext != ".doc"):
+                continue
+            file_content = minio_tool.get_file_byte(bucket_name=bucket_name, object_name=obj)
+            if file_ext == ".doc":
+                from processor.converters.file_converters import office_bytes_to_docx_bytes
+                # 先将 .doc 转换为 .docx
+                docx_bytes = office_bytes_to_docx_bytes(file_content, suffix=file_ext)
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as temp_file:
+                    temp_file.write(docx_bytes)
+                    temp_file_path = temp_file.name
+                raw_markdown = doc_to_markdown(input_data=temp_file_path, task_id=file_name, bucket=output_bucket)
+                raw_markdown = ensure_utf8_string(raw_markdown)
+                markdown_content = split_markdown(raw_markdown)
+                os.remove(temp_file_path)
+            elif file_ext in WORD_EXTENTIONS:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as temp_file:
+                    temp_file.write(file_content)
+                    temp_file_path = temp_file.name
+                raw_markdown = doc_to_markdown(input_data=temp_file_path, task_id=file_name, bucket=output_bucket)
+                raw_markdown = ensure_utf8_string(raw_markdown)
+                markdown_content = split_markdown(raw_markdown)
+                os.remove(temp_file_path)
+            else:
+                # 处理 Excel，包括 CSV
+                is_csv = (file_ext.lower() == ".csv")
+                with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as temp_file:
+                    temp_file.write(file_content)
+                    temp_file_path = temp_file.name
+                markdown_content = ''.join(excel_to_markdown(
+                    excel_content=temp_file_path,
+                    file_name=file_name,
+                    is_csv=is_csv,
+                ))
+                os.remove(temp_file_path)
+            markdown_content = ensure_utf8_string(markdown_content)
+            markdown_bytes = markdown_content.encode('utf-8')
+            out_object = f"{file_name}/{file_name}.md"
+            minio_tool.upload_file_by_bytes(
+                bucket_name=output_bucket,
+                object_name=out_object,
+                file_bytes=markdown_bytes,
+                content_type='text/markdown; charset=utf-8'
+            )
+            results.append({"source": obj, "markdown_url": out_object})
+        return {
+            "status": "success",
+            "message": f"共处理 {len(results)} 个文件",
+            "data": results
+        }
+    except S3Error as e:
+        return {
+            "status": "error",
+            "message": f"MinIO错误: {str(e)}",
+            "data": None
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"处理目录时出错: {str(e)}",
+            "data": None
+        }
+
 
 @router.post("/upload-analyze-office-file")
 def upload_analyze_office_file(

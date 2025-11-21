@@ -27,13 +27,13 @@ from celery_worker.celery_server import DEFAULT_QUEUE_NAME, get_queue_length, se
 # 实例化资源
 router = APIRouter()
 MAX_WORKERS = int(os.getenv('MAX_WORKERS', 8))
-MAX_QUEUING_TASKS = int(os.getenv('MAX_QUEUING_TASKS', 20))
+MAX_QUEUING_TASKS = int(os.getenv('MAX_QUEUING_TASKS', 40))
 UPLOAD_BUCKET = os.getenv('UPLOAD_BUCKET', 'uploads')
 
 @router.post("/drop-pdf")
 async def drop_pdf(
-    pdf_path: str, 
-    bucket_name: str, 
+    pdf_path: str,
+    bucket_name: str,
     output_bucket: str,
     ocr_enabled: bool = False,
     table_enabled: bool = False,
@@ -41,38 +41,18 @@ async def drop_pdf(
     ocr_lang: OCRLanguage = OCRLanguage.get_default()
 ):
     """
-    分析PDF文件的接口
-    """
-    """
-    分析PDF文件的接口
+    将 pdf_path 视为 MinIO 前缀（目录），遍历其中所有对象并为每个对象创建任务。
+    若前缀为空但 pdf_path 指向单个对象存在，则仅为该对象创建任务。
     """
     try:
-        minio_tool.file_exists(bucket_name=bucket_name, object_name=pdf_path)
-    except S3Error:
-        raise HTTPException(status_code=404, detail="PDF文件未找到")
-    task_id = generate_short_uuid()
-    try:
-        task_to_add = Task(
-            task_id=task_id,
-            object_key=pdf_path,
-            bucket_name=bucket_name,
-            output_bucket=output_bucket,
-            ocr_enabled=ocr_enabled,
-            table_enabled=table_enabled,
-            formula_enabled=formula_enabled,
-            ocr_lang=ocr_lang.value,
-            output_info='',
-            create_time=datetime.now(),
-            finish_time=None,
-            status=TaskStatus.QUEUED,
-        )
+        objects = minio_tool.list_objects(bucket_name=bucket_name, prefix=pdf_path, recursive=True)
+        if not objects:
+            if not minio_tool.file_exists(bucket_name=bucket_name, object_name=pdf_path):
+                raise HTTPException(status_code=404, detail="路径下没有文件或文件不存在")
+            objects = [pdf_path]
 
-        task_repository.create_task(task_to_add)
-
-        # 入队前检查 backlog + 派发到默认队列
         target_queue = DEFAULT_QUEUE_NAME
         backlog = get_queue_length(target_queue)
-
         if backlog >= MAX_QUEUING_TASKS:
             return JSONResponse(content={
                 "task_id": "",
@@ -80,14 +60,35 @@ async def drop_pdf(
                 "message": f"队列压力过大({target_queue}:{backlog})，请稍后重试"
             }, status_code=429)
 
-        send_pdf_task(task_id, target_queue)
-        logger.info(f"任务 {task_id} 已入队到 {target_queue}，当前等待数: {backlog}")
+        task_ids = []
+        for obj in objects:
+            task_id = generate_short_uuid()
+            task_to_add = Task(
+                task_id=task_id,
+                object_key=obj,
+                bucket_name=bucket_name,
+                output_bucket=output_bucket,
+                ocr_enabled=ocr_enabled,
+                table_enabled=table_enabled,
+                formula_enabled=formula_enabled,
+                ocr_lang=ocr_lang.value,
+                output_info='',
+                create_time=datetime.now(),
+                finish_time=None,
+                status=TaskStatus.QUEUED,
+            )
+            task_repository.create_task(task_to_add)
+            send_pdf_task(task_id, target_queue)
+            task_ids.append(task_id)
+
+        logger.info(f"路径 {pdf_path} 下共 {len(objects)} 个文件已入队到 {target_queue}，当前等待数: {backlog}")
         return JSONResponse(content={
-            "task_id": task_id,
+            "task_ids": task_ids,
             "status": TaskStatus.QUEUED,
-            "message": "任务已加入队列",
+            "message": f"已创建 {len(task_ids)} 个任务",
             "queue": target_queue,
-            "backlog": backlog
+            "backlog": backlog,
+            "count": len(task_ids)
         })
 
     except HTTPException:
