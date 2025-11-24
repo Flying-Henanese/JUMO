@@ -4,7 +4,7 @@ from data.redis.redis_client import get_redis_config_from_env, RedisClient
 from utils.logging import setup_logger
 setup_logger()
 from loguru import logger
-from .celery_config import settings, build_redis_url, DEFAULT_QUEUE_NAME
+from celery_worker.celery_config import settings, build_redis_url, DEFAULT_QUEUE_NAME
 
 # 这个后续会放到dockerfile中
 os.environ['CUDA_VISIBLE_DEVICES'] = '1,2,3'

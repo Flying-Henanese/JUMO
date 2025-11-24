@@ -23,6 +23,7 @@ from fastapi.responses import StreamingResponse
 from io import BytesIO
 import zipfile
 from celery_worker.celery_server import DEFAULT_QUEUE_NAME, get_queue_length, send_pdf_task
+from const.file_extensions import OFFICE_EXTENSIONS, PDF_EXTENSIONS, IMAGE_EXTENSIONS,EXCEL_EXTENTIONS
 
 # 实例化资源
 router = APIRouter()
@@ -50,6 +51,14 @@ async def drop_pdf(
             if not minio_tool.file_exists(bucket_name=bucket_name, object_name=pdf_path):
                 raise HTTPException(status_code=404, detail="路径下没有文件或文件不存在")
             objects = [pdf_path]
+
+        # 因为minio中可能会有目录作为文件存在，所有需要过滤掉目录和不支持的文件类型
+        # 并且也对重复的文件进行去重
+        allowed_exts = {*PDF_EXTENSIONS, *IMAGE_EXTENSIONS, *OFFICE_EXTENSIONS,*EXCEL_EXTENTIONS}
+        objects = [obj for obj in objects if not obj.endswith('/') and os.path.splitext(obj)[-1].lower() in allowed_exts]
+        objects = sorted(set(objects))
+        if not objects:
+            raise HTTPException(status_code=404, detail="路径下没有可处理的文件")
 
         target_queue = DEFAULT_QUEUE_NAME
         backlog = get_queue_length(target_queue)

@@ -1,10 +1,10 @@
 from loguru import logger
 import os
-from .celery_config import settings  # 集中配置
+from celery_worker.celery_config import settings  # 集中配置
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 # from processor.vlm_mode import PDFProcessor  # 移除顶层导入，避免父进程初始化 CUDA
 from celery_worker.celery_server import celery_app, DEFAULT_QUEUE_NAME, TASK_NAME_PROCESS_PDF
-from .celery_config import parse_cuda_devices as _parse_cuda_devices
+from celery_worker.celery_config import parse_cuda_devices as _parse_cuda_devices
 from data.operation import TaskRepository
 from utils.minio_tool import MinioConnection
 from data.model import Task

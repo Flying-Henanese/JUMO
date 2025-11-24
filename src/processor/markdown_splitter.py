@@ -187,257 +187,175 @@ def semantic_chunking_with_auto_clusters(text, max_chunk_size=500, model_id="BAA
 
     return chunks
 
-def process_markdown(md_text: str, max_length: int = 500) -> str:
-    """
-    使用 markdown-it-py 处理markdown文本，根据标题结构和内容长度进行分割。
-    表格作为不可分割的元素，会直接复制到结果中。
-    
-    :param md_text: 输入的markdown文本
-    :param max_length: 每段最大长度
-    :return: 处理后的markdown文本
-    """
-
-    md = MarkdownIt("commonmark").enable('table')
-    md.use(dollarmath_plugin,allow_space=True,allow_digits=True)
-    tokens = md.parse(md_text)
-    
-    # 预先计算原始文本的行数组，避免在循环中重复计算
-    original_lines = md_text.split('\n')
-    
-    # 整篇文章的分段放在这里
-    result = []
-    # 当前正在处理的段落内容
-    current_content = []
-    title_stack = [""] * 6  # h1-h6
-
-    def get_title_path():
-        """
-        获取当前标题路径（用于生成聚合标题）
-        """
-        return '|'.join([t for t in title_stack if t])
-
-    def infer_heading_level(title: str) -> int:
-        """
-        通过标题前缀编号推断层级，例如 1., 1.2, 1.2.3 或中文编号“一、”
-        """
-        # 匹配数字编号标题前缀，如 "1"、"1.2"、"1.2.3"
-        # ^\s*：起始处的可选空白
-        # (\d+(?:\.\d+)*)：至少一个数字，后面可跟多个".数字"片段，整体作为捕获组
-        # [.)、]?：可选的分隔符（英文点 .、右括号 )、中文顿号 、）
-        # \s*：分隔符后的可选空白
-        m = re.match(r'^\s*(\d+(?:\.\d+)*)[.)、]?\s*', title)
-        if m:
-            return max(1, min(len(m.group(1).split('.')), 6))
-        # 匹配中文编号标题前缀，如 "一、"、"二." 等
-        # ^\s*：起始处的可选空白
-        # [一二三四五六七八九十百千]+：至少一个中文数字字符
-        # [、.]：必须跟随中文顿号 "、" 或英文点 "."
-        # \s*：分隔符后的可选空白
-        m_zh = re.match(r'^\s*[一二三四五六七八九十百千]+[、.]\s*', title)
-        if m_zh:
-            return 1
+def _infer_heading_level(title: str) -> int:
+    m = re.match(r'^\s*(\d+(?:\.\d+)*)[.)、]?\s*', title)
+    if m:
+        return max(1, min(len(m.group(1).split('.')), 6))
+    m_zh = re.match(r'^\s*[一二三四五六七八九十百千]+[、.]\s*', title)
+    if m_zh:
         return 1
+    return 1
 
-    def get_current_level():
-        """
-        获取当前标题层级（找到最高级的非空标题）
-        """
-        for i in range(5, -1, -1):
-            if title_stack[i]:
-                return i + 1
-        return 1  # 默认最小一级
+def _get_title_path(stack: list[str]) -> str:
+    return '|'.join([t for t in stack if t])
 
-    def flush_content(special_element=None):
-        """
-        检查是否还有待处理内容
-        如果有内容，则把这一段放到result中
-        形成一个标题+内容的段落
-        """
-        if not current_content:
-            return
-        content = '\n'.join(current_content).strip()
-        if not content:
-            current_content.clear()
-            return
-
-        level = get_current_level()
-        title_path = get_title_path()
-          
-        # 如果当前段落为表格，直接复制
-        if special_element:
-            header = f"{'#' * level} {title_path}|{special_element}" if title_path else f"{'#' * level} {special_element}"
-            result.extend([header, content, "-" * 10])
-        else:
-            # 处理普通的文本段落
-            if len(content) > max_length:
-                # 使用段落切分法
-                # chunks = split_paragraphs_with_overlap(content, max_length)
-                # 使用句子语义近似程度切分
-                chunks = semantic_chunking_with_auto_clusters(content, max_chunk_size=max_length)
-                for i, chunk in enumerate(chunks, 1):
-                    header = f"{'#' * level} {title_path}|Part {i}" if title_path else f"{'#' * level} Part {i}"
-                    result.extend([header, chunk, "-" * 10])
-            else:
-                header = f"{'#' * level} {title_path}" if title_path else f"{'#' * level}"
-                if header:
-                    result.append(header)
-                    result.append("")  # 添加空行分隔标题和内容
-                result.extend([content, "-" * 10])
+def _flush_content(result, current_content, title_stack, max_length, special_element=None) -> None:
+    if not current_content:
+        return
+    content = '\n'.join(current_content).strip()
+    if not content:
         current_content.clear()
+        return
+    level = next((i + 1 for i in range(5, -1, -1) if title_stack[i]), 1)
+    title_path = _get_title_path(title_stack)
+    if special_element:
+        header = f"{'#' * level} {title_path}|{special_element}" if title_path else f"{'#' * level} {special_element}"
+        result.extend([header, content, '-' * 10])
+    else:
+        if len(content) > max_length:
+            chunks = semantic_chunking_with_auto_clusters(content, max_chunk_size=max_length)
+            for idx, chunk in enumerate(chunks, 1):
+                header = f"{'#' * level} {title_path}|Part {idx}" if title_path else f"{'#' * level} Part {idx}"
+                result.extend([header, chunk, '-' * 10])
+        else:
+            header = f"{'#' * level} {title_path}" if title_path else f"{'#' * level}"
+            if header:
+                result.append(header)
+                result.append("")
+            result.extend([content, '-' * 10])
+    current_content.clear()
 
-    i = 0
-    while i < len(tokens):
-        token = tokens[i]   
-        # 标题处理
-        if token.type == "heading_open":
-            flush_content()
-            inline_token = tokens[i + 1]
-            if inline_token.type == "inline":
-                full_title = inline_token.content.strip()
-                level = infer_heading_level(full_title)
-                title_stack[level - 1] = full_title
-                for j in range(level, 6):
-                    title_stack[j] = ""
-            i += 3
-            continue
 
-        # 表格处理（整个复制）
-        elif token.type == "table_open":
-            flush_content()
-            table_start = token.map[0] if token.map else 0
-            
-            # 找到表格结束token
-            table_end_token = None
-            j = i + 1
-            while j < len(tokens) and tokens[j].type != "table_close":
-                j += 1
-            
-            if j < len(tokens):
-                table_end_token = tokens[j]
-                # 如果table_close没有map信息，寻找下一个有map信息的token
-                if table_end_token.map and table_end_token.map[1]:
-                    table_end = table_end_token.map[1]
-                else:
-                    # 寻找table_close之后第一个有map信息的token
-                    table_end = None
-                    for k in range(j + 1, len(tokens)):
-                        if tokens[k].map and tokens[k].map[0] is not None:
-                            table_end = tokens[k].map[0]  # 使用下一个元素的开始位置
-                            break
-                    
-                    if table_end is None:
-                        # 如果还是找不到，使用启发式方法：从table_start开始向下扫描
-                        table_end = table_start + 1
-                        # 简单启发式：找到第一个空行或非表格行
-                        for line_idx in range(table_start, len(original_lines)):
-                            line = original_lines[line_idx].strip()
-                            if not line or not (line.startswith('|') or '|' in line):
-                                table_end = line_idx
-                                break
-            else:
-                # 没找到table_close，使用启发式方法
+def _extract_table_block(tokens, i, original_lines):
+    token = tokens[i]
+    table_start = token.map[0] if token.map else 0
+    j = i + 1
+    while j < len(tokens) and tokens[j].type != 'table_close':
+        j += 1
+    if j < len(tokens):
+        end_token = tokens[j]
+        if end_token.map and end_token.map[1] is not None:
+            table_end = end_token.map[1]
+        else:
+            table_end = None
+            for k in range(j + 1, len(tokens)):
+                if tokens[k].map and tokens[k].map[0] is not None:
+                    table_end = tokens[k].map[0]
+                    break
+            if table_end is None:
                 table_end = table_start + 1
                 for line_idx in range(table_start, len(original_lines)):
                     line = original_lines[line_idx].strip()
                     if not line or not (line.startswith('|') or '|' in line):
                         table_end = line_idx
                         break
-            
-            # 提取表格内容
-            table_content = '\n'.join(original_lines[table_start:table_end])
-            
-            current_content.append(table_content)
-            flush_content(special_element='Table')
-            i = j + 1
-            continue
+    else:
+        table_end = table_start + 1
+        for line_idx in range(table_start, len(original_lines)):
+            line = original_lines[line_idx].strip()
+            if not line or not (line.startswith('|') or '|' in line):
+                table_end = line_idx
+                break
+    return j, '\n'.join(original_lines[table_start:table_end])
 
-        # 段落内容
-        elif token.type == "paragraph_open":
+
+def process_markdown(md_text: str, max_length: int = 500) -> str:
+    md = MarkdownIt('commonmark').enable('table')
+    md.use(dollarmath_plugin, allow_space=True, allow_digits=True)
+    tokens = md.parse(md_text)
+    original_lines = md_text.split('\n')
+    result = []
+    current_content = []
+    title_stack = [''] * 6
+
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
+        if token.type == 'heading_open':
+            _flush_content(result, current_content, title_stack, max_length)
             inline_token = tokens[i + 1]
-            if inline_token.type == "inline":
-                current_content.append(inline_token.content.strip())
-            i += 3  # paragraph_open, inline, paragraph_close
+            if inline_token.type == 'inline':
+                full_title = inline_token.content.strip()
+                level = _infer_heading_level(full_title)
+                title_stack[level - 1] = full_title
+                for j in range(level, 6):
+                    title_stack[j] = ''
+            i += 3
             continue
-
-        # 代码块
-        elif token.type == "fence":
+        elif token.type == 'table_open':
+            _flush_content(result, current_content, title_stack, max_length)
+            j, table_content = _extract_table_block(tokens, i, original_lines)
+            current_content.append(table_content)
+            _flush_content(result, current_content, title_stack, max_length, special_element='Table')
+            i = j + 1 if j < len(tokens) else len(tokens)
+            continue
+        elif token.type == 'paragraph_open':
+            inline_token = tokens[i + 1]
+            if inline_token.type == 'inline':
+                current_content.append(inline_token.content.strip())
+            i += 3
+            continue
+        elif token.type == 'fence':
             current_content.append(f"```\n{token.content}\n```")
             i += 1
             continue
-            
-        # 有序列表处理
-        elif token.type == "ordered_list_open":
-            flush_content()
+        elif token.type == 'ordered_list_open':
+            _flush_content(result, current_content, title_stack, max_length)
             list_content = []
             j = i + 1
             list_item_counter = 1
-            
-            while j < len(tokens) and tokens[j].type != "ordered_list_close":
-                if tokens[j].type == "list_item_open":
+            while j < len(tokens) and tokens[j].type != 'ordered_list_close':
+                if tokens[j].type == 'list_item_open':
                     k = j + 1
-                    while k < len(tokens) and tokens[k].type != "list_item_close":
-                        if tokens[k].type == "paragraph_open" and k + 1 < len(tokens) and tokens[k + 1].type == "inline":
+                    while k < len(tokens) and tokens[k].type != 'list_item_close':
+                        if tokens[k].type == 'paragraph_open' and k + 1 < len(tokens) and tokens[k + 1].type == 'inline':
                             list_content.append(f"{list_item_counter}. {tokens[k + 1].content.strip()}")
                             list_item_counter += 1
                         k += 1
                 j += 1
-            
             if list_content:
                 current_content.extend(list_content)
-                flush_content(special_element=token.type)  # 立即处理列表内容
+                _flush_content(result, current_content, title_stack, max_length, special_element=token.type)
             i = j + 1
             continue
-            
-        # 无序列表处理
-        elif token.type == "bullet_list_open":
-            flush_content()
+        elif token.type == 'bullet_list_open':
+            _flush_content(result, current_content, title_stack, max_length)
             list_content = []
             j = i + 1
-            
-            while j < len(tokens) and tokens[j].type != "bullet_list_close":
-                if tokens[j].type == "list_item_open":
-                    # 找到对应的inline token
+            while j < len(tokens) and tokens[j].type != 'bullet_list_close':
+                if tokens[j].type == 'list_item_open':
                     k = j + 1
-                    while k < len(tokens) and tokens[k].type != "list_item_close":
-                        if tokens[k].type == "paragraph_open" and k + 1 < len(tokens) and tokens[k + 1].type == "inline":
+                    while k < len(tokens) and tokens[k].type != 'list_item_close':
+                        if tokens[k].type == 'paragraph_open' and k + 1 < len(tokens) and tokens[k + 1].type == 'inline':
                             list_content.append(f"- {tokens[k + 1].content.strip()}")
                         k += 1
                 j += 1
-            
             if list_content:
                 current_content.extend(list_content)
-                flush_content(special_element=token.type)  # 立即处理列表内容
+                _flush_content(result, current_content, title_stack, max_length, special_element=token.type)
             i = j + 1
             continue
-            
-        # HTML块处理
-        elif token.type == "html_block":
+        elif token.type == 'html_block':
+            _flush_content(result, current_content, title_stack, max_length)
             current_content.append(token.content.strip())
-            flush_content(special_element=token.type)  # 立即处理HTML块
+            _flush_content(result, current_content, title_stack, max_length, special_element=token.type)
             i += 1
             continue
-        
-        # 跳过列表相关的关闭标签（已在上面处理）
-        elif token.type in ["list_item_close", "ordered_list_close", "bullet_list_close", "list_item_open"]:
+        elif token.type in ['list_item_close', 'ordered_list_close', 'bullet_list_close', 'list_item_open']:
             i += 1
             continue
-            
-        # 数学公式
-        elif token.type == "math_block":
-            flush_content()
-            print(f'数学公式:{token.content}')
-            current_content.append(f"$$ {token.content} $$")
-            flush_content(special_element='Math Block')
+        elif token.type == 'math_block':
+            _flush_content(result, current_content, title_stack, max_length)
+            current_content.append(f"$ {token.content} $")
+            _flush_content(result, current_content, title_stack, max_length, special_element='Math Block')
             i += 1
             continue
-        # 其他内容
         else:
-            logger.warning(f"无法处理的token类型: {token.type}, 内容: {getattr(token, 'content', 'N/A')}")  # 添加调试信息
+            logger.warning(f"无法处理的token类型: {token.type}, 内容: {getattr(token, 'content', 'N/A')}")
             i += 1
 
-    if result and result[-1] == "-" * 10:
+    if result and result[-1] == '-' * 10:
         result.pop()
-
     return '\n'.join(result)
 
 
@@ -447,7 +365,7 @@ if __name__ == "__main__":
     # 使用cuda:3设备进行推理
     os.environ['CUDA_VISIBLE_DEVICES'] = '3'
     os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
-    with open("tests/test_resource/dqfd.md", 'r', encoding='utf-8') as f:
+    with open("tests/test_resource/dqfd_1.md", 'r', encoding='utf-8') as f:
         md_text = f.read()
     processed_md = process_markdown(md_text, max_length=500) 
     out_file = "tests/test_resource/processed_dqfd.md"

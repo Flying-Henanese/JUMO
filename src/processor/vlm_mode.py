@@ -17,7 +17,7 @@ from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union
 from data.model import Task
 from wrapper.logger import log_with_time_consumption
 from utils.minio_tool import MinioConnection
-from const.file_extensions import OFFICE_EXTENSIONS, PDF_EXTENSIONS,IMAGE_EXTENSIONS
+from const.file_extensions import OFFICE_EXTENSIONS, PDF_EXTENSIONS,IMAGE_EXTENSIONS,EXCEL_EXTENTIONS
 from data.operation import TaskRepository
 from processor.markdown_splitter import process_markdown
 from processor.converters.file_converters import office_bytes_to_pdf_bytes
@@ -33,7 +33,7 @@ class PDFProcessor:
     def _sync_process_pdf(self, current_task: Task):
         try:
             extension = os.path.splitext(current_task.object_key)[-1].lower()
-            if extension not in {*PDF_EXTENSIONS, *IMAGE_EXTENSIONS, *OFFICE_EXTENSIONS}:
+            if extension not in {*PDF_EXTENSIONS, *IMAGE_EXTENSIONS, *OFFICE_EXTENSIONS,*EXCEL_EXTENTIONS}:
                 raise HTTPException(status_code=400, detail="不支持的文件类型")
 
             file_bytes = self.minio_tool.get_file_byte(
@@ -47,7 +47,7 @@ class PDFProcessor:
                 image_bytes.save(pdf_bytes, format="PDF")
                 pdf_bytes.seek(0)  # 重置指针到开头
                 file_bytes = pdf_bytes.getvalue()  # 获取PDF字节数据
-            elif extension in OFFICE_EXTENSIONS:
+            elif extension in OFFICE_EXTENSIONS or extension in EXCEL_EXTENTIONS:
                 file_bytes = office_bytes_to_pdf_bytes(word_bytes=file_bytes,suffix=extension)
             else:
                 # do nothing for original pdf files
@@ -115,7 +115,7 @@ class PDFProcessor:
                     content_type="text/markdown"
                 )
                 
-                # 切分处理后的markdown内容
+                # 切分处理后的markdown内容，并增强表格标题
                 splitted_markdown = process_markdown(clean_md)
                 self.minio_tool.upload_file_by_bytes(
                     bucket_name=current_task.output_bucket,
