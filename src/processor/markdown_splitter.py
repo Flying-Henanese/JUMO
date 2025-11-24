@@ -10,8 +10,10 @@ import nltk
 from nltk.tokenize import sent_tokenize
 import threading
 from loguru import logger
-#from .named_entity_recognition import extract_entities_auto
-DEVICE_MODE = os.getenv("DEFAULT_CUDA_DEVICE", "0") # 选择CUDA设备
+from .named_entity_recognition import append_entities_to_header  # 引入自动实体提取函数
+
+
+DEVICE_MODE = os.getenv("DEFAULT_CUDA_DEVICE", "mps") # 选择CUDA设备
 # 确保 punkt_tab 可用
 # 首先检测是否已存在punkt_tab模型
 # 如果加载失败，尝试下载
@@ -35,7 +37,7 @@ class SingletonSentenceTransformer:
         if cls._instance is None:
             with cls._lock:
                 print(f"正在通过{os.getenv('HF_ENDPOINT')}加载模型：{model_id}（mirror={mirror}）,device={device}")
-                cls._instance = SentenceTransformer(model_id, device=f'cuda:{device}')
+                cls._instance = SentenceTransformer(model_id, device=f'{DEVICE_MODE}')
                 print("模型加载完成。")
         return cls._instance
 
@@ -79,55 +81,6 @@ def split_mixed_sentences(text: str) -> list[str]:
                 sentences.extend([p.strip() for p in parts if p.strip()])
     return sentences
 
-# region
-def split_paragraphs_with_overlap(text: str, max_length: int = 500, overlap: int = 50) -> list[str]:
-    """
-    根据段落优先的方式切分文本：
-    1. 先将短段落聚合，保证每段尽量接近 max_length。
-    2. 对过长段落使用滑窗+重叠字符切分。
-    
-    :param text: 原始 Markdown 文本
-    :param max_length: 每段最大长度
-    :param overlap: 长段落之间的重叠字符数
-    :return: 分段结果列表
-    """
-    assert max_length > overlap, "max_length 必须大于 overlap"
-
-    # 初步拆分段落并去掉空段落
-    paragraphs = [p.strip() for p in text.strip().split('\n\n') if p.strip()]
-    
-    # 聚合短段落
-    aggregated_paragraphs = []
-    current_chunk = ""
-    for para in paragraphs:
-        # 检查当前段落加上现在正在处理的段落是否超过 max_length
-        # 如果不超过的话可以进行整合
-        if len(current_chunk) + len(para) + 2 <= max_length:  # +2 预留换行符
-            if current_chunk:
-                current_chunk += "\n\n" + para
-            else:
-                current_chunk = para
-        # 如果超过的话，之前的current_chunk自己成为一段
-        # 然后当前段落成为新的current_chunk
-        else:
-            if current_chunk:
-                aggregated_paragraphs.append(current_chunk)
-            current_chunk = para
-    # 最后有剩余的段落，没有后续的段落和他作伴了
-    # 所以直接加入结果
-    if current_chunk:
-        aggregated_paragraphs.append(current_chunk)
-
-    # 对过长段落使用滑窗切分
-    result = []
-    for para in aggregated_paragraphs:
-        if len(para) <= max_length:
-            result.append(para)
-        else:
-            result.extend(semantic_chunking_with_auto_clusters(para, max_length))
-
-    return result
-# endregion
 
 def find_best_num_clusters(embeddings, min_clusters=2, max_clusters=10):
     """
@@ -263,10 +216,98 @@ def process_markdown(md_text: str, max_length: int = 500) -> str:
     md = MarkdownIt('commonmark').enable('table')
     md.use(dollarmath_plugin, allow_space=True, allow_digits=True)
     tokens = md.parse(md_text)
+<<<<<<< HEAD
+=======
+    
+    # 预先计算原始文本的行数组，避免在循环中重复计算
+    # 这里的行数组是为了在后续的段落合并中，能够准确地定位到原始文本的位置
+>>>>>>> de8ee0acbf7d273ca36bd07685877cb88b4a527f
     original_lines = md_text.split('\n')
     result = []
     current_content = []
+<<<<<<< HEAD
     title_stack = [''] * 6
+=======
+    title_stack = [""] * 6  # h1-h6
+
+    def get_title_path():
+        """
+        获取当前标题路径（用于生成聚合标题）
+        """
+        return '|'.join([t for t in title_stack if t])
+
+    def infer_heading_level(title: str) -> int:
+        """
+        通过标题前缀编号推断层级，例如 1., 1.2, 1.2.3 或中文编号“一、”
+        """
+        # 匹配数字编号标题前缀，如 "1"、"1.2"、"1.2.3"
+        # ^\s*：起始处的可选空白
+        # (\d+(?:\.\d+)*)：至少一个数字，后面可跟多个".数字"片段，整体作为捕获组
+        # [.)、]?：可选的分隔符（英文点 .、右括号 )、中文顿号 、）
+        # \s*：分隔符后的可选空白
+        m = re.match(r'^\s*(\d+(?:\.\d+)*)[.)、]?\s*', title)
+        if m:
+            return max(1, min(len(m.group(1).split('.')), 6))
+        # 匹配中文编号标题前缀，如 "一、"、"二." 等
+        # ^\s*：起始处的可选空白
+        # [一二三四五六七八九十百千]+：至少一个中文数字字符
+        # [、.]：必须跟随中文顿号 "、" 或英文点 "."
+        # \s*：分隔符后的可选空白
+        m_zh = re.match(r'^\s*[一二三四五六七八九十百千]+[、.]\s*', title)
+        if m_zh:
+            return 1
+        return 1
+
+    def get_current_level():
+        """
+        获取当前标题层级（找到最深级的非空标题）
+        """
+        for i in range(5, -1, -1):
+            if title_stack[i]:
+                return i + 1
+        return 1  # 默认最小一级
+
+    def flush_content(special_element=None):
+        """
+        检查是否还有待处理内容
+        如果有内容，则把这一段放到result中
+        形成一个标题+内容的段落
+        """
+        if not current_content:
+            return
+        content = '\n'.join(current_content).strip()
+        if not content:
+            current_content.clear()
+            return
+
+        level = get_current_level()
+        title_path = get_title_path()
+          
+        # 如果当前段落为表格，直接复制(不做实体识别)
+        if special_element:
+            header = f"{'#' * level} {title_path}|{special_element}" if title_path else f"{'#' * level} {special_element}"
+            result.extend([header, content, "-" * 10])
+        else:
+            # 处理普通的文本段落
+            if len(content) > max_length:
+                # 使用段落切分法
+                # chunks = split_paragraphs_with_overlap(content, max_length)
+                # 使用句子语义近似程度切分
+                chunks = semantic_chunking_with_auto_clusters(content, max_chunk_size=max_length)
+                for i, chunk in enumerate(chunks, 1):
+                    header = f"{'#' * level} {title_path}|Part {i}" if title_path else f"{'#' * level} Part {i}"
+                    header = append_entities_to_header(header, chunk)
+                    result.extend([header, chunk, "-" * 10])
+            else:
+                header = f"{'#' * level} {title_path}" if title_path else ""
+                # 对普通文本段落进行实体识别，把识别出的实体添加到标题后面
+                header = append_entities_to_header(header, content)
+                if header:
+                    result.append(header)
+                    result.append("")  # 添加空行分隔标题和内容
+                result.extend([content, "-" * 10])
+        current_content.clear()
+>>>>>>> de8ee0acbf7d273ca36bd07685877cb88b4a527f
 
     i = 0
     while i < len(tokens):
@@ -363,12 +404,16 @@ def process_markdown(md_text: str, max_length: int = 500) -> str:
 # 测试代码
 if __name__ == "__main__":
     # 使用cuda:3设备进行推理
-    os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+    # os.environ['CUDA_VISIBLE_DEVICES'] = '3'
     os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
+<<<<<<< HEAD
     with open("tests/test_resource/dqfd_1.md", 'r', encoding='utf-8') as f:
+=======
+    with open("tests/test_resource/test.md", 'r', encoding='utf-8') as f:
+>>>>>>> de8ee0acbf7d273ca36bd07685877cb88b4a527f
         md_text = f.read()
     processed_md = process_markdown(md_text, max_length=500) 
-    out_file = "tests/test_resource/processed_dqfd.md"
+    out_file = "tests/test_resource/processed_test.md"
     with open(out_file, 'w', encoding='utf-8') as f:
         f.write(processed_md)    
     print(f'处理后的markdown文件已保存到{out_file},现在来看看效果')
