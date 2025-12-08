@@ -40,8 +40,3 @@ def extract_comment_context(doc:Document, comment_id, context_chars=30):
                     left_snip = left[-context_chars:] if left else "[No left context]"
                     print(f"commented content: '{left_snip}'")
                     print(f"comment content: '{comment.text}'")
-
-if __name__ == "__main__":
-    doc = Document("example.docx")
-    for comment in doc.comments:
-        extract_comment_context(doc, comment.comment_id)

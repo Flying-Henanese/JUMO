@@ -231,10 +231,3 @@ def _merge_captions_with_content(doc: DoclingDocument) -> DoclingDocument:
         doc.delete_items(node_items=items_to_delete)
     
     return doc
-
-# region
-# 示例用法
-# if __name__ == "__main__":
-#     md1 = doc_to_markdown("a.docx","a")
-#     print("Markdown (from path):\n", md1)
-# endregion
