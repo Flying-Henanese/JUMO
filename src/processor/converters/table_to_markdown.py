@@ -4,7 +4,7 @@ from loguru import logger
 
 def html_table_to_markdown(html: str) -> str:
     """
-    将HTML表格转换为Markdown格式的具体行为
+    将HTML表格转换为Markdown格式的具体实现
     """
     soup = BeautifulSoup(html, 'html.parser')
     table = soup.find('table')
