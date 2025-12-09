@@ -4,7 +4,7 @@ pdf_route.py
 定义 PDF 相关的接口路由，包括分析 PDF 接口和查询任务状态接口。
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from datetime import datetime
 from minio.error import S3Error
@@ -110,7 +110,6 @@ async def drop_pdf(
 @router.post("/analyze-pdf")
 async def analyze_pdf(
     pdf_path: str, 
-    background_tasks: BackgroundTasks, 
     bucket_name: str, 
     output_bucket: str,
     ocr_enabled: bool = False,
@@ -145,9 +144,7 @@ async def analyze_pdf(
         )
 
 
-        if task_repository.count_processing_task() <  MAX_WORKERS:
-            active_task.status = TaskStatus.PROCESSING
-        elif task_repository.count_active_task() >= 20:
+        if task_repository.count_active_task() >= MAX_QUEUING_TASKS:
             return JSONResponse(content={
                 "task_id": "",
                 "status": TaskStatus.FAILED,
@@ -155,8 +152,7 @@ async def analyze_pdf(
             })
 
         task_repository.create_task(task_to_add)
-        # 标记为处理中，便于状态统计与前端展示
-        task_repository.activate_task_by_id(task_id, TaskStatus.PROCESSING)
+        send_pdf_task(task_id, DEFAULT_QUEUE_NAME)
 
         return JSONResponse(content={
             "task_id": task_id,
@@ -170,7 +166,6 @@ async def analyze_pdf(
 
 @router.post("/upload-and-analyze-pdf")
 async def upload_and_analyze_pdf(
-    background_tasks: BackgroundTasks,
     output_bucket: str,
     file: UploadFile = File(...),
     ocr_enabled: bool = False,
@@ -220,12 +215,7 @@ async def upload_and_analyze_pdf(
             status=TaskStatus.QUEUED,
         )
 
-        # 如果当前正在处理的任务数量小于MAX_WORKERS
-        # 并且有GPU计算资源
-        # 那么就标记为处理中，开始处理
-        if task_repository.count_processing_task() < MAX_WORKERS:
-            active_task.status = TaskStatus.PROCESSING
-        elif task_repository.count_active_task() >= MAX_QUEUING_TASKS:
+        if task_repository.count_active_task() >= MAX_QUEUING_TASKS:
             return JSONResponse(content={
                 "task_id": "",
                 "status": TaskStatus.FAILED,
@@ -233,7 +223,7 @@ async def upload_and_analyze_pdf(
             })
 
         task_repository.create_task(task_to_add)
-        task_repository.activate_task_by_id(task_id, TaskStatus.PROCESSING)
+        send_pdf_task(task_id, DEFAULT_QUEUE_NAME)
 
         return JSONResponse(content={
             "task_id": task_id,
@@ -324,7 +314,7 @@ async def reprocess_task(
         if task.finish_time is None:
             raise HTTPException(status_code=400, detail="任务尚未完成，无需重新处理")
         # 把任务放到celery队列中
-        send_pdf_task(task_id)
+        send_pdf_task(task_id, DEFAULT_QUEUE_NAME)
         
         # 重置原任务状态（可选）
         task.finish_time = None

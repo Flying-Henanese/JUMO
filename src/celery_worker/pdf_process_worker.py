@@ -113,10 +113,12 @@ if __name__ == "__main__":
         devices = [None]  # CPU 回退
     
     procs = []
-    for d in devices:
+    for idx, d in enumerate[str | None](devices):
         env = os.environ.copy()
         q = os.getenv("WORKER_QUEUE_NAME", DEFAULT_QUEUE_NAME)
         env["WORKER_QUEUE_NAME"] = q
+        base_port = int(os.getenv("VLLM_BASE_PORT", "8000"))
+        env["VLLM_SERVER_URL"] = f"http://localhost:{base_port + idx}/v1"
         if d is not None:
             env["WORKER_GPU_DEVICE"] = str(d)
             worker_name = f"worker_{q}_{d}@%h"

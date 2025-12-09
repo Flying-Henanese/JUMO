@@ -10,7 +10,7 @@ class Settings:
     CELERY_RESULT_BACKEND: str | None = os.getenv("CELERY_RESULT_BACKEND")
     WORKER_QUEUE_NAME: str = os.getenv("WORKER_QUEUE_NAME", "celery")
     HF_ENDPOINT: str = os.getenv("HF_ENDPOINT", "https://hf-mirror.com")
-    CUDA_VISIBLE_DEVICES: str = os.getenv("CUDA_VISIBLE_DEVICES", "0,1,2,3").strip()
+    CUDA_VISIBLE_DEVICES: str = os.getenv("CUDA_VISIBLE_DEVICES", "0,1,2").strip()
 
 settings = Settings()
 

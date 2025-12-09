@@ -7,7 +7,7 @@ from loguru import logger
 from celery_worker.celery_config import settings, build_redis_url, DEFAULT_QUEUE_NAME
 
 # 这个后续会放到dockerfile中
-os.environ['CUDA_VISIBLE_DEVICES'] = '1,2,3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2'
 
 # 模块常量：统一任务名
 TASK_NAME_PROCESS_PDF = "process_pdf"

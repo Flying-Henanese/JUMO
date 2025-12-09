@@ -12,9 +12,6 @@ stop_workers() {
   if [[ -f "$PID_FILE" ]]; then
     PID="$(cat "$PID_FILE" || true)"
   fi
-  if [[ -n "$PID" ]]; then
-    pkill -TERM -g "$PID" -f 'vllm::enginecore' || true
-  fi
   pkill -TERM -f 'celery.*-A src.celery_worker.pdf_process_worker' || true
   pkill -TERM -f 'python.*src/celery_worker/pdf_process_worker.py' || true
   for i in $(seq 1 20); do
@@ -27,9 +24,6 @@ stop_workers() {
   done
   pkill -KILL -f 'celery.*-A src.celery_worker.pdf_process_worker' || true
   pkill -KILL -f 'python.*src/celery_worker/pdf_process_worker.py' || true
-  if [[ -n "$PID" ]]; then
-    pkill -KILL -g "$PID" -f 'VLLM::EngineCore' || true
-  fi
 }
 
 start_workers() {
