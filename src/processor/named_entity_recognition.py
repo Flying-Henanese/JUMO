@@ -5,6 +5,7 @@ import torch
 from transformers import AutoTokenizer, AutoModelForTokenClassification, pipeline
 from typing import List, Dict, Any, Optional
 from loguru import logger
+from utils.device_selector import get_device
 from utils.singleton import parameterized_singleton
 from transformers.pipelines import Pipeline
 from transformers.modeling_utils import PreTrainedModel
@@ -229,49 +230,14 @@ class SingletonNERModel:
     
     def __init__(self, model_name: str = MODEL_NAME, device: Optional[str] = None):
         self.model_name: str = model_name
-        self.device: str = self._get_optimal_device(device)
+        self.device: str = get_device()
         self.tokenizer: Optional[PreTrainedTokenizerBase] = None
         self.model: Optional[PreTrainedModel] = None
         self.ner_pipeline: Optional[Pipeline] = None
         
         self._load_model()
     
-    def _get_optimal_device(self, device: Optional[str] = None) -> str:
-        """
-        自动选择最优设备或使用指定设备
-        支持 MPS、CUDA 和 CANN (NPU)
-        """
-        if device:
-            return device
-            
-        # 检查环境变量中的设备模式
-        # 格式: DEVICE_MODE=cuda:0,npu:0,mps,cpu
-        device_mode = os.getenv("DEVICE_MODE", "auto").split(":")[0].lower()
-        
-        if device_mode == "auto":
-            # 自动检测可用设备
-            if torch.cuda.is_available():
-                device = "cuda"
-                logger.info("检测到CUDA设备，使用GPU加速")
-            elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-                device = "mps"
-                logger.info("检测到MPS设备，使用Apple Silicon加速")
-            elif hasattr(torch, 'npu') and torch.npu.is_available():
-                device = "npu"
-                logger.info("检测到NPU设备，使用华为昇腾加速")
-            else:
-                device = "cpu"
-                logger.info("使用CPU进行推理")
-        else:
-            # 使用指定的设备模式
-            if device_mode in ["mps", "cuda", "npu", "cpu"]:
-                device = device_mode
-                logger.info(f"使用指定设备: {device}")
-            else:
-                device = "cpu"
-                logger.warning(f"错误的设备指定： {device_mode}，回退到CPU")
-        
-        return device
+
     
     def _load_model(self):
         """
@@ -574,4 +540,3 @@ def append_entities_to_header(header: str, chunk: str) -> str:
     except Exception as e:
         logger.warning(f"提取实体时发生异常: {e}")
     return processed_header if processed_header is not None else header
-
