@@ -1,104 +1,126 @@
 #!/bin/bash
 set -euo pipefail
 
-# Get script directory
+# 获取脚本所在目录（项目根目录）
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 REPO_ROOT="$SCRIPT_DIR"
 
-# Define log function
+# ==========================================
+# 配置区域 (Configuration)
+# ==========================================
+# 在这里定义的环境变量会被子脚本继承
+# 你可以在这里修改模型名称、镜像地址等
+
+# 设置 MinerU 使用的模型名称
+export MODEL="${MODEL:-opendatalab/MinerU2.5-2509-1.2B}"
+
+# 设置 HuggingFace 镜像地址
+export HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"
+
+# 设置 RPC 超时时间
+export VLLM_RPC_TIMEOUT="${VLLM_RPC_TIMEOUT:-120000}"
+
+# 设置使用的 GPU 设备 ID (逗号分隔)
+# vLLM 启动脚本会根据这里的 ID 数量自动启动对应数量的实例
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1,2}"
+
+# ==========================================
+
+# 定义日志输出函数，带时间戳
 log() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"
 }
 
-# Paths to component scripts
+# 定义子脚本的绝对路径
 VLLM_START_SCRIPT="$REPO_ROOT/src/celery_worker/vllm_backend_start.sh"
 VLLM_STOP_SCRIPT="$REPO_ROOT/src/celery_worker/vllm_backend_stop.sh"
 CELERY_SCRIPT="$REPO_ROOT/start_celery_workers.sh"
 SERVICE_START_SCRIPT="$REPO_ROOT/start_service.sh"
 
-# Function to stop MinerU Service (non-interactive version of stop_service.sh)
+# 停止 MinerU 主服务的函数
+# 原 stop_service.sh 是交互式的，这里改为自动执行以便集成
 stop_mineru_service() {
-    log "Stopping MinerU Service..."
-    # Find process IDs
-    # Using the same logic as stop_service.sh but non-interactive
+    log "正在停止 MinerU Service..."
+    # 查找进程ID
     pids=$(ps -ef | grep 'src/mineru_service.py' | grep -v grep | awk '{print $2}')
     
     if [ -n "$pids" ]; then
         for pid in $pids; do
-            log "Killing MinerU Service PID: $pid"
+            log "终止 MinerU Service 进程 ID: $pid"
             kill -9 $pid
         done
-        log "MinerU Service stopped."
+        log "MinerU Service 已停止"
     else
-        log "No MinerU Service process found."
+        log "未发现正在运行的 MinerU Service 进程"
     fi
 }
 
+# 启动所有服务
 start_all() {
-    log "Starting all services..."
+    log ">>> 开始按顺序启动所有服务..."
 
-    # 1. Start vLLM Backend
-    log "Step 1/3: Starting vLLM Backend..."
+    # 1. 启动 vLLM Backend (推理后端)
+    log "步骤 1/3: 启动 vLLM Backend..."
     if [ -f "$VLLM_START_SCRIPT" ]; then
-        # Check if vLLM is already running to avoid double start? 
-        # The start script doesn't check, it just starts new ones.
-        # But stop_all stops them.
         bash "$VLLM_START_SCRIPT"
+        # vLLM 脚本中有 sleep，但为了保险起见，这里可以再稍作等待确保端口监听就绪
+        sleep 2
     else
-        log "Error: vLLM start script not found at $VLLM_START_SCRIPT"
+        log "错误: 未找到 vLLM 启动脚本: $VLLM_START_SCRIPT"
         exit 1
     fi
 
-    # 2. Start Celery Workers
-    log "Step 2/3: Starting Celery Workers..."
+    # 2. 启动 Celery Workers (任务队列处理)
+    log "步骤 2/3: 启动 Celery Workers..."
     if [ -f "$CELERY_SCRIPT" ]; then
         bash "$CELERY_SCRIPT" start
     else
-        log "Error: Celery script not found at $CELERY_SCRIPT"
+        log "错误: 未找到 Celery 脚本: $CELERY_SCRIPT"
         exit 1
     fi
 
-    # 3. Start MinerU Main Service
-    log "Step 3/3: Starting MinerU Main Service..."
+    # 3. 启动 MinerU Main Service (Web 服务入口)
+    log "步骤 3/3: 启动 MinerU Main Service..."
     if [ -f "$SERVICE_START_SCRIPT" ]; then
         bash "$SERVICE_START_SCRIPT"
     else
-        log "Error: Service start script not found at $SERVICE_START_SCRIPT"
+        log "错误: 未找到服务启动脚本: $SERVICE_START_SCRIPT"
         exit 1
     fi
     
-    log "All services started successfully."
+    log ">>> 所有服务启动序列已完成"
 }
 
+# 停止所有服务
 stop_all() {
-    log "Stopping all services..."
+    log ">>> 开始按相反顺序停止所有服务..."
 
-    # Stop in reverse order of dependency
-    
-    # 1. Stop MinerU Main Service
-    log "Step 1/3: Stopping MinerU Main Service..."
+    # 1. 停止 MinerU Main Service
+    # 最先停止入口，不再接收新请求
+    log "步骤 1/3: 停止 MinerU Main Service..."
     stop_mineru_service
 
-    # 2. Stop Celery Workers
-    log "Step 2/3: Stopping Celery Workers..."
+    # 2. 停止 Celery Workers
+    log "步骤 2/3: 停止 Celery Workers..."
     if [ -f "$CELERY_SCRIPT" ]; then
         bash "$CELERY_SCRIPT" stop
     else
-        log "Warning: Celery script not found at $CELERY_SCRIPT"
+        log "警告: 未找到 Celery 脚本: $CELERY_SCRIPT"
     fi
 
-    # 3. Stop vLLM Backend
-    log "Step 3/3: Stopping vLLM Backend..."
+    # 3. 停止 vLLM Backend
+    # 最后停止底层的推理服务
+    log "步骤 3/3: 停止 vLLM Backend..."
     if [ -f "$VLLM_STOP_SCRIPT" ]; then
         bash "$VLLM_STOP_SCRIPT"
     else
-        log "Warning: vLLM stop script not found at $VLLM_STOP_SCRIPT"
+        log "警告: 未找到 vLLM 停止脚本: $VLLM_STOP_SCRIPT"
     fi
     
-    log "All services stopped."
+    log ">>> 所有服务已停止"
 }
 
-# Main logic
+# 主逻辑：根据命令行参数执行相应操作
 case "${1:-}" in
     start)
         start_all
@@ -108,12 +130,13 @@ case "${1:-}" in
         ;;
     restart)
         stop_all
-        # Wait a moment to ensure ports are freed and processes are fully killed
+        # 等待几秒钟，确保端口释放和进程完全清理
+        log "等待 5 秒以确保进程完全退出..."
         sleep 5
         start_all
         ;;
     *)
-        echo "Usage: $0 {start|stop|restart}"
+        echo "用法: $0 {start|stop|restart}"
         exit 1
         ;;
 esac
