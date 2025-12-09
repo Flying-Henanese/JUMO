@@ -10,10 +10,10 @@ import nltk
 from nltk.tokenize import sent_tokenize
 import threading
 from loguru import logger
-from .named_entity_recognition import append_entities_to_header  # 引入自动实体提取函数
+from utils.device_selector import get_device
+#from .named_entity_recognition import append_entities_to_header  # 引入自动实体提取函数
 
 
-DEVICE_MODE = os.getenv("DEFAULT_CUDA_DEVICE", "mps") # 选择CUDA设备
 # 确保 punkt_tab 可用
 # 首先检测是否已存在punkt_tab模型
 # 如果加载失败，尝试下载
@@ -33,20 +33,21 @@ class SingletonSentenceTransformer:
     _instance = None
     _lock = threading.Lock()
 
-    def __new__(cls, model_id='BAAI/bge-small-zh-v1.5', mirror=True, device=DEVICE_MODE):
+    def __new__(cls, model_id='BAAI/bge-small-zh-v1.5', mirror=True):
         if cls._instance is None:
             with cls._lock:
-                print(f"正在通过{os.getenv('HF_ENDPOINT')}加载模型：{model_id}（mirror={mirror}）,device={device}")
-                cls._instance = SentenceTransformer(model_id, device=f'{DEVICE_MODE}')
-                print("模型加载完成。")
+                target_device = get_device()
+                logger.info(f"正在通过{os.getenv('HF_ENDPOINT')}加载模型：{model_id}（mirror={mirror}）, device={target_device}")
+                cls._instance = SentenceTransformer(model_id, device=target_device)
+                logger.info("模型加载完成。")
         return cls._instance
 
 
-def get_bge_sentence_transformer_singleton(model_id='BAAI/bge-small-zh-v1.5', mirror=True, device=DEVICE_MODE):
+def get_bge_sentence_transformer_singleton(model_id='BAAI/bge-small-zh-v1.5', mirror=True):
     """
     获取全局唯一的 SentenceTransformer 实例。
     """
-    return SingletonSentenceTransformer(model_id=model_id, mirror=mirror, device=device)
+    return SingletonSentenceTransformer(model_id=model_id, mirror=mirror)
 
 def split_sentences_chinese(text):
     """
@@ -316,7 +317,8 @@ def process_markdown(md_text: str, max_length: int = 500) -> str:
 # 测试代码
 if __name__ == "__main__":
     # 使用cuda:3设备进行推理
-    # os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+    os.environ['DEFAULT_CUDA_DEVICE'] = 'cuda:3'
     os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
     with open("tests/test_resource/dqfd_1.md", 'r', encoding='utf-8') as f:
         md_text = f.read()
