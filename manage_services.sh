@@ -24,6 +24,14 @@ export VLLM_RPC_TIMEOUT="${VLLM_RPC_TIMEOUT:-120000}"
 # vLLM 启动脚本会根据这里的 ID 数量自动启动对应数量的实例
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1,2}"
 
+# 设置API服务端口
+export API_SERVICE_PORT="${API_SERVICE_PORT:-5116}"
+
+# 设置 Python 和 Celery 解释器路径
+# 如果环境变量未设置（例如在宿主机），默认使用项目目录下的虚拟环境
+export PYTHON_PATH="${PYTHON_PATH:-$REPO_ROOT/.venv/bin/python}"
+export CELERY_PATH="${CELERY_PATH:-$REPO_ROOT/.venv/bin/celery}"
+
 # ==========================================
 
 # 定义日志输出函数，带时间戳
@@ -54,6 +62,9 @@ stop_mineru_service() {
         log "未发现正在运行的 MinerU Service 进程"
     fi
 }
+
+# 捕获系统信号 (SIGTERM, SIGINT) 以便优雅退出
+trap 'stop_all; exit 0' SIGTERM SIGINT
 
 # 启动所有服务
 start_all() {
@@ -89,6 +100,16 @@ start_all() {
     fi
     
     log ">>> 所有服务启动序列已完成"
+
+    # 如果存在 /.dockerenv 文件，说明在容器内，需要挂起主进程
+    if [ -f /.dockerenv ]; then
+        log "Running inside Docker container. Keeping process alive..."
+        # 挂起进程，直到接收到信号
+        tail -f /dev/null &
+        wait $!
+    else
+        log "Running on Host machine. Services started in background."
+    fi
 }
 
 # 停止所有服务

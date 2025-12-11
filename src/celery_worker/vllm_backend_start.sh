@@ -6,6 +6,9 @@ set -euo pipefail
 # 如果没有从外部获取HF_ENDPOINT，那么使用一个默认值
 # 其实在外面已经设置了这些环境变量，但是作为防御性措施，这里再设置一次
 export HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
+# 开启 VLLM 使用 ModelScope 下载模型，解决部分地区 HuggingFace 连通性问题
+export VLLM_USE_MODELSCOPE=${VLLM_USE_MODELSCOPE:-True}
+
 # 增加 RPC 超时时间 (毫秒)，防止多实例启动时 CPU 争抢导致握手超时
 # 这个问题是vllm的v1引擎引入的问题
 export VLLM_RPC_TIMEOUT=${VLLM_RPC_TIMEOUT:-120000}
@@ -52,7 +55,7 @@ for i in "${!GPU_IDS[@]}"; do
   
   # 启动 vLLM
   # 注意：这里重新设置 CUDA_VISIBLE_DEVICES 为单个 ID，确保 vLLM 只看到这一张卡
-  nohup env CUDA_VISIBLE_DEVICES="$GPU_ID" TMPDIR="$INSTANCE_TMP_DIR" poetry run python -m vllm.entrypoints.openai.api_server \
+  nohup env CUDA_VISIBLE_DEVICES="$GPU_ID" TMPDIR="$INSTANCE_TMP_DIR" "$PYTHON_PATH" -m vllm.entrypoints.openai.api_server \
     "${COMMON_OPTS[@]}" \
     --port "$PORT" > "$LOG_DIR/vllm_gpu$GPU_ID.log" 2>&1 &
     

@@ -22,5 +22,5 @@ export CUDA_VISIBLE_DEVICES="0,1,2,3"
 # 前面已经制定了cuda:7，这里可以指定为cuda:0
 export MINERU_DEVICE_MODE=cuda:0
 
-# 使用poetry run启动服务
-nohup poetry run python src/mineru_service.py > output.log 2>&1 &
+# 使用指定 Python 路径启动服务
+nohup "$PYTHON_PATH" src/mineru_service.py > output.log 2>&1 &

@@ -84,11 +84,11 @@ start_workers() {
   # 在后台启动worker进程
   # nohup: 使进程在用户退出后继续运行
   # setsid: 在新的会话中运行进程，使其不受当前终端的影响
-  # poetry run: 使用Poetry管理Python环境并运行命令
+  # 使用 $PYTHON_PATH 替代 poetry run python
   # >>"$LOG_FILE": 将标准输出重定向到日志文件（追加模式）
   # 2>&1: 将标准错误重定向到标准输出（即也写入日志文件）
   # &: 在后台运行命令
-  nohup setsid poetry run python src/celery_worker/pdf_process_worker.py >>"$LOG_FILE" 2>&1 &
+  nohup setsid "$PYTHON_PATH" src/celery_worker/pdf_process_worker.py >>"$LOG_FILE" 2>&1 &
   
   # 将后台进程的PID保存到文件
   # $!: 最后一个后台进程的PID

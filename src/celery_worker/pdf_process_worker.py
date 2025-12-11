@@ -140,8 +140,12 @@ if __name__ == "__main__":
         without_gossip_flag = "--without-gossip"
         # 禁用心跳：减少与 broker 的心跳检查带来的 CPU 负载
         without_heartbeat_flag = "--without-heartbeat"
+
+        # 获取 celery 可执行文件路径，默认为 'celery'
+        celery_bin = os.getenv("CELERY_PATH", "celery")
+
         cmd = [
-            "poetry", "run", "celery",
+            celery_bin,
             "-A", celery_app,
             "worker",
             "-Q", queue_name,
