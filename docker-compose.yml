@@ -1,0 +1,146 @@
+version: '3.8'
+
+services:
+  # FastAPI 主服务
+  mineru-api:
+    build: .
+    image: mineru-service:latest
+    container_name: mineru-api
+    restart: unless-stopped
+    ports:
+      - "${API_SERVICE_PORT:-5116}:${API_SERVICE_PORT:-5116}"   # 宿主 5116 -> 容器 5116 (FastAPI)
+    environment:
+      # 模型与下载源配置
+      # - MODEL=${MODEL:-opendatalab/MinerU2.5-2509-1.2B}
+      # - HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
+      # - MINERU_MODEL_SOURCE=${MINERU_MODEL_SOURCE:-modelscope}environment:
+      - API_SERVICE_PORT=${API_SERVICE_PORT:-5116}
+      # Redis 配置（通过服务名 redis 访问）
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+
+      # 其他可选配置（视你的环境自行扩展）
+      # - MINIO_ENDPOINT=your-minio-host:9000
+
+    volumes:
+      - ./logs:/app/logs
+      # 注意，这个很重要，因为有不同的服务都要访问这个数据库文件
+      # 所以，这里要挂载到宿主机的目录，而不是容器内的目录
+      # 否则每个容器都会在自己的目录下创建一个数据库文件
+      - ./database:/app/database
+
+    depends_on:
+    # 一切组件都启动之后才可以启动
+      - redis
+      - vllm
+      - mineru-worker
+
+    # 直接以前台方式运行 API 服务（而不是 nohup 后台）
+    command: >
+      bash -lc "$PYTHON_PATH src/mineru_service.py"
+
+  # Celery Worker 容器
+  mineru-worker:
+    image: mineru-service:latest
+    container_name: mineru-worker
+    restart: unless-stopped
+
+    environment:
+      # 模型与下载源配置
+      - MODEL=${MODEL:-opendatalab/MinerU2.5-2509-1.2B}
+      - HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
+      - MINERU_MODEL_SOURCE=${MINERU_MODEL_SOURCE:-modelscope}
+
+      # Redis 配置（通过服务名 redis 访问）
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+
+      # Celery 队列名
+      - WORKER_QUEUE_NAME=celery
+      - VLLM_BASE_ENDPOINT=vllm
+
+      # GPU 配置（根据实际 GPU 调整）
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+
+    volumes:
+      - ./logs:/app/logs
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      - ${HOME}/.cache/modelscope:/root/.cache/modelscope
+      - ${HOME}/.cache/vllm:/root/.cache/vllm
+      - ${HOME}/nltk_data:/root/nltk_data
+      # 注意，这个很重要，因为有不同的服务都要访问这个数据库文件
+      # 所以，这里要挂载到宿主机的目录，而不是容器内的目录
+      # 否则每个容器都会在自己的目录下创建一个数据库文件
+      - ./database:/app/database
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    depends_on:
+      - redis
+      - vllm
+
+    # 使用与宿主机相同的主程序入口，在容器中以前台方式运行
+    command: >
+      bash -lc "$PYTHON_PATH src/celery_worker/pdf_process_worker.py"
+
+  # vLLM 推理后端容器
+  vllm:
+    image: mineru-service:latest
+    container_name: mineru-vllm
+    restart: unless-stopped
+
+    environment:
+      - MODEL=${MODEL:-opendatalab/MinerU2.5-2509-1.2B}
+      - HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
+      - MINERU_MODEL_SOURCE=${MINERU_MODEL_SOURCE:-modelscope}
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+      - VLLM_RPC_TIMEOUT=${VLLM_RPC_TIMEOUT:-120000}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+
+    volumes:
+      - ./logs:/app/logs
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      - ${HOME}/.cache/modelscope:/root/.cache/modelscope
+      - ${HOME}/.cache/vllm:/root/.cache/vllm
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    # vLLM 对多 GPU 会在容器内启动多个进程
+    ipc: host
+
+    depends_on:
+      - redis
+
+    # 启动 vLLM 后端，并通过 tail -f 保持容器前台进程不退出
+    command: >
+      bash -lc "src/celery_worker/vllm_backend_start.sh && tail -f /dev/null"
+
+  # Redis 容器，其他服务通过服务名 redis 访问
+  redis:
+    image: redis:alpine
+    container_name: mineru-redis
+    restart: unless-stopped
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data:
