@@ -6,7 +6,7 @@ set -e
 # 功能：自动查找最新 mineru-service 镜像并启动，挂载所有模型缓存目录
 # ==============================================================================
 
-# 1. 查找 mineru-service 镜像 (获取最新的一个)
+# 1. 查找 mineru-service 镜像 (获取当前宿主机中最新的一个)
 IMAGE_NAME="mineru-service"
 # 使用 -q 获取 ID，head -n 1 获取最新的那个 (按创建时间排序)
 IMAGE_ID=$(docker images -q "$IMAGE_NAME" | head -n 1)
@@ -33,7 +33,7 @@ echo "正在启动新容器 $CONTAINER_NAME ..."
 
 # 4. 启动容器
 # -d: 后台运行
-# --gpus all: 开启 GPU 支持
+# --gpus all: 开启 GPU 支持（这里只是让GPU可见，并不是实际使用GPU，具体还是要通过cuda_visible_devices指定）
 # --shm-size 16g: 增加共享内存防止 OOM (vLLM/PyTorch 需要)
 # -p 5116:5116: 映射 API 端口
 # -p 30000:30000: 映射辅助端口
@@ -48,6 +48,8 @@ docker run -d \
     -v ~/.cache/modelscope:/root/.cache/modelscope \
     -v ~/.cache/vllm:/root/.cache/vllm \
     -v ~/nltk_data:/root/nltk_data \
+    -v "$(pwd)/logs:/app/logs" \
+    -v "$(pwd)/src:/app/src" \
     "$IMAGE_ID"
 
 echo "--------------------------------------------------"
