@@ -42,6 +42,7 @@ docker run -d \
     --gpus all \
     --name "$CONTAINER_NAME" \
     --shm-size 16g \
+    -e CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}" \
     -p 5116:5116 \
     -p 30000:30000 \
     -v ~/.cache/huggingface:/root/.cache/huggingface \
