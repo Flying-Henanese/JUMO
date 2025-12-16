@@ -10,32 +10,29 @@ services:
     ports:
       - "${API_SERVICE_PORT:-5116}:${API_SERVICE_PORT:-5116}"   # 宿主 5116 -> 容器 5116 (FastAPI)
     environment:
-      # 模型与下载源配置
-      # - MODEL=${MODEL:-opendatalab/MinerU2.5-2509-1.2B}
-      # - HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
-      # - MINERU_MODEL_SOURCE=${MINERU_MODEL_SOURCE:-modelscope}environment:
       - API_SERVICE_PORT=${API_SERVICE_PORT:-5116}
-      # Redis 配置（通过服务名 redis 访问）
-      - REDIS_HOST=redis
+      - REDIS_HOST=redis # Redis 配置（通过docker-compose内的服务名redis访问）
       - REDIS_PORT=6379
-      - REDIS_DB=0
+      - REDIS_DB=0 
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
-
-      # 其他可选配置（视你的环境自行扩展）
-      # - MINIO_ENDPOINT=your-minio-host:9000
 
     volumes:
       - ./logs:/app/logs
+      # 挂载源码目录，实现代码修改后的热重载
+      - ./src:/app/src
       # 注意，这个很重要，因为有不同的服务都要访问这个数据库文件
       # 所以，这里要挂载到宿主机的目录，而不是容器内的目录
       # 否则每个容器都会在自己的目录下创建一个数据库文件
       - ./database:/app/database
 
     depends_on:
-    # 一切组件都启动之后才可以启动
-      - redis
-      - vllm
-      - mineru-worker
+      # 一切组件都启动之后才可以启动网关服务
+      # 否则背后实际的操作都会失败
+      redis:
+        condition: service_healthy
+      mineru-worker:
+        condition: service_healthy
+
 
     # 直接以前台方式运行 API 服务（而不是 nohup 后台）
     command: >
@@ -68,6 +65,8 @@ services:
 
     volumes:
       - ./logs:/app/logs
+      # 挂载源码目录，实现代码修改后的热重载
+      - ./src:/app/src
       - ${HOME}/.cache/huggingface:/root/.cache/huggingface
       - ${HOME}/.cache/modelscope:/root/.cache/modelscope
       - ${HOME}/.cache/vllm:/root/.cache/vllm
@@ -86,8 +85,19 @@ services:
               capabilities: [gpu]
 
     depends_on:
-      - redis
-      - vllm
+      # 所有依赖redis的服务都要在健康检查通过之后启动
+      # 否则背后实际的操作都会失败
+      redis:
+        condition: service_healthy
+      vllm:
+        condition: service_started
+
+    healthcheck:
+      test: ["CMD-SHELL", "${CELERY_PATH:-celery} -A src.celery_worker.pdf_process_worker inspect ping >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
     # 使用与宿主机相同的主程序入口，在容器中以前台方式运行
     command: >
@@ -106,6 +116,7 @@ services:
       - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
       - VLLM_RPC_TIMEOUT=${VLLM_RPC_TIMEOUT:-120000}
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      # 用于健康检查的端口列表，逗号分隔，默认只检查 8000
 
     volumes:
       - ./logs:/app/logs
@@ -127,6 +138,22 @@ services:
     depends_on:
       - redis
 
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          if [ -z "${CUDA_VISIBLE_DEVICES}" ]; then echo "no CUDA_VISIBLE_DEVICES"; exit 1; fi;
+          i=0;
+          for g in $(echo "$CUDA_VISIBLE_DEVICES" | tr ',' ' '); do
+            port=$((8000 + i));
+            curl -fsS "http://localhost:${port}/v1/models" >/dev/null || exit 1;
+            i=$((i+1));
+          done
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
     # 启动 vLLM 后端，并通过 tail -f 保持容器前台进程不退出
     command: >
       bash -lc "src/celery_worker/vllm_backend_start.sh && tail -f /dev/null"
@@ -137,10 +164,22 @@ services:
     container_name: mineru-redis
     restart: unless-stopped
     environment:
+      # 设置redis实例的密码，保证前面的服务可以正常访问这个redis
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
     command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
     volumes:
+      # 对于使用来说这里没有什么实际意义
+      # 这个只是为了保证数据的持久化
+      # 效果就是容器重启后，数据不会丢失
       - redis_data:/data
+    # 配置健康检查，确保redis实例正常运行
+    # 所有依赖redis的服务都要在健康检查通过之后启动
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD} ping | grep PONG >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
 
 volumes:
   redis_data:
