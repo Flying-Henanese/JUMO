@@ -15,6 +15,10 @@ services:
       - REDIS_PORT=6379
       - REDIS_DB=0 
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - WORKER_QUEUE_NAME=celery
+      - TASK_NAME_PROCESS_PDF=process_pdf
+      - CELERY_REDIS_DB_BROKER=0
+      - CELERY_REDIS_DB_BACKEND=1
 
     volumes:
       - ./logs:/app/logs
@@ -59,6 +63,7 @@ services:
       # Celery 队列名
       - WORKER_QUEUE_NAME=celery
       - VLLM_BASE_ENDPOINT=vllm
+      - TASK_NAME_PROCESS_PDF=process_pdf
 
       # GPU 配置（根据实际 GPU 调整）
       - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}

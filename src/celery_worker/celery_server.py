@@ -1,34 +1,24 @@
 from celery import Celery
 import os
-from data.redis.redis_client import get_redis_config_from_env, RedisClient
+from data.redis.redis_client import RedisClient
 from utils.logging import setup_logger
 setup_logger()
 from loguru import logger
 from celery_worker.celery_config import settings, build_redis_url, DEFAULT_QUEUE_NAME
 
-# 这个后续会放到dockerfile中
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2'
 
 # 模块常量：统一任务名
-TASK_NAME_PROCESS_PDF = "process_pdf"
+# 从环境变量中获取任务名，默认值为 "process_pdf"
+# 这里为了保证和其他模块的任务名一致，所以这里也用环境变量来获取
+# 这个任务名是为了指定在celery队列中这个任务的名称，生产者和消费者都要使用这个名称来发送和接收任务
+TASK_NAME_PROCESS_PDF = os.getenv("TASK_NAME_PROCESS_PDF", "process_pdf")
 
-# 用于生成celery broker和result backend的redis url
-# 其实就是拼出来一个redis连接串
-def build_redis_url(db_index: int) -> str:
-    cfg = get_redis_config_from_env()
-    host = cfg.get("host", "localhost")
-    port = cfg.get("port", 6379)
-    username = cfg.get("username","")
-    password = cfg.get("password")
-    if password:
-        return f"redis://{username}:{password}@{host}:{port}/{db_index}"
-    return f"redis://{host}:{port}/{db_index}"
-
-broker_url = settings.CELERY_BROKER_URL or build_redis_url(0)
-result_backend = settings.CELERY_RESULT_BACKEND or build_redis_url(1)
+broker_url = settings.CELERY_BROKER_URL or build_redis_url(settings.CELERY_REDIS_DB_BROKER)
+result_backend = settings.CELERY_RESULT_BACKEND or build_redis_url(settings.CELERY_REDIS_DB_BACKEND)
 
 # 这里的celery_app等于是一个celery的客户端实例
 # 生产者和消费者都要引用这个模块来访问celery队列, 来发送任务或者接收任务
+# 所以生产者和消费者都要import这个celery_server模块并引用这个celery_app实例
 celery_app: Celery = Celery(
     # 这里的main是celery的app name，不起实际作用
     main="mineru_pdf", 
@@ -63,20 +53,20 @@ celery_app.conf.update(
     broker_transport_options={"health_check_interval": 30},
 )
 
-# 默认队列名称的单一来源，供 worker 任务装饰器与生产者参考
+# 默认队列名称的单一来源，供生产者和消费者参考
 DEFAULT_QUEUE_NAME = settings.WORKER_QUEUE_NAME
 
-
-
-# 这些函数是给生产者用的，用来查询队列长度
+# 这个函数是给生产者用的，用来查询队列长度
 # 这个模块上方的celery_app不会被重复实例化，因为路由部分的进程只有一个
 def get_queue_length(queue_name: str) -> int:
     """
     查询 Redis broker 中某个 Celery 队列的等待任务数量（LLEN），并包含已预取但未确认的任务。
     """
-    # 复用项目内的 RedisClient，显式使用 broker 的 db=0，避免每次调用都新建连接
+    # 复用项目内的 RedisClient，显式使用 broker 的固定db=settings.CELERY_REDIS_DB_BROKER，避免每次调用都新建连接
     if not hasattr(get_queue_length, "_client"):
-        get_queue_length._client = RedisClient(db_index=0).get_client()
+        get_queue_length._client = RedisClient(db_index=settings.CELERY_REDIS_DB_BROKER).get_client()
+    # 这里的_client是一个简易的单例,等于是函数的一个隐式属性，函数首次调用后就会初始化这个属性
+    # 因为我们这里在进程不会访问其他的redis实例以及db，所以这里可以安全地使用单例模式
     r = get_queue_length._client
 
     # 等待中的任务（队列长度）
@@ -100,6 +90,10 @@ def get_queue_length(queue_name: str) -> int:
     return waiting
 
 def parse_queue_names_from_env() -> list[str]:
+    """
+    从环境变量中解析 Celery 队列名称，支持逗号分隔。
+    这里主要的目的是让外部获取到celery队列的名称，方便在不同的模块中使用
+    """
     return [DEFAULT_QUEUE_NAME]
 
 def choose_queue_by_least_backlog(queue_names: list[str]) -> tuple[str, int]:
