@@ -93,7 +93,7 @@ services:
         condition: service_started
 
     healthcheck:
-      test: ["CMD-SHELL", "${CELERY_PATH:-celery} -A src.celery_worker.pdf_process_worker inspect ping >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "pgrep -f 'celery.*-A src.celery_worker.pdf_process_worker.* worker' >/dev/null || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3

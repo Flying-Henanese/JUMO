@@ -61,10 +61,16 @@ ENV UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
 # 这里看似复杂，但实际上是结合了poetry管理依赖的优势，以及uv构建环境的速度（反正都是自动化的，我已经操过的心就不用你来了）
 # 使用 pip 安装 uv 以避免 GitHub Release 下载被墙的问题
 # 还有一个点就是这里让poetry只输出main依赖，避免安装开发过程中使用的ruff和black等工具（这些工具都是开发时使用的，不是运行时依赖）
-RUN python3.12 -m pip install --no-cache-dir uv poetry poetry-plugin-export -i https://mirrors.aliyun.com/pypi/simple/ \
-    && poetry export --without-hashes --only main --format=requirements.txt > requirements.txt \
-    && uv venv .venv --python 3.12 \
-    && uv pip install --no-cache-dir -r requirements.txt --python .venv --index-url https://mirrors.aliyun.com/pypi/simple/
+RUN python3.12 -m pip install --no-cache-dir uv poetry poetry-plugin-export -i https://mirrors.aliyun.com/pypi/simple/
+
+# 先去掉这一步，直接在宿主机poetry lock就好了 
+# RUN poetry lock --no-interaction
+
+RUN poetry export --without-hashes --only main --format=requirements.txt > requirements.txt
+
+RUN uv venv .venv --python 3.12
+
+RUN uv pip install --no-cache-dir -r requirements.txt --python .venv --index-url https://mirrors.aliyun.com/pypi/simple/
 
 # ==========================================
 # Stage 2: Runner (运行时精简镜像)
