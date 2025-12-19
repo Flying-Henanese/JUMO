@@ -1,8 +1,6 @@
 from loguru import logger
 import os
 from celery_worker.celery_config import settings  # 集中配置
-os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
-# from processor.vlm_mode import PDFProcessor  # 移除顶层导入，避免父进程初始化 CUDA
 from celery_worker.celery_server import celery_app, DEFAULT_QUEUE_NAME, TASK_NAME_PROCESS_PDF
 from celery_worker.celery_config import parse_cuda_devices as _parse_cuda_devices
 from data.operation import TaskRepository
@@ -12,7 +10,6 @@ from const.task_status_enum import TaskStatus
 import subprocess
 from celery.signals import worker_process_init
 
-# 每个 worker 通过环境变量指定自身设备与队列；未指定时默认取全局列表的第一个
 
 _repo = None
 _minio = None
@@ -21,17 +18,21 @@ _processor = None
 @worker_process_init.connect
 def _init_services(**kwargs):
     global _repo, _minio, _processor
-    devices = _parse_cuda_devices()
+    
+    # 获取主进程分配的 GPU 设备 ID
     assigned = os.getenv("WORKER_GPU_DEVICE")
-    device = assigned or (devices[0] if devices else None)
-    if device:
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(device)
-    try:
-        import torch
-        if torch.cuda.is_available():
-            torch.cuda.set_device(0)
-    except Exception:
-        pass
+    
+    # 如果分配了 GPU，设置 CUDA_VISIBLE_DEVICES
+    if assigned:
+        os.environ["CUDA_VISIBLE_DEVICES"] = assigned
+        try:
+            import torch
+            if torch.cuda.is_available():
+                # 由于设置了 CUDA_VISIBLE_DEVICES，当前进程看到的 GPU 索引始终是 0
+                torch.cuda.set_device(0)
+        except Exception:
+            pass
+            
     if _repo is None:
         _repo = TaskRepository()
     if _minio is None:

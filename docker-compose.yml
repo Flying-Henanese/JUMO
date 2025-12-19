@@ -15,6 +15,10 @@ services:
       - REDIS_PORT=6379
       - REDIS_DB=0 
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - WORKER_QUEUE_NAME=celery
+      - TASK_NAME_PROCESS_PDF=process_pdf
+      - CELERY_REDIS_DB_BROKER=0
+      - CELERY_REDIS_DB_BACKEND=1
 
     volumes:
       - ./logs:/app/logs
@@ -59,6 +63,7 @@ services:
       # Celery 队列名
       - WORKER_QUEUE_NAME=celery
       - VLLM_BASE_ENDPOINT=vllm
+      - TASK_NAME_PROCESS_PDF=process_pdf
 
       # GPU 配置（根据实际 GPU 调整）
       - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
@@ -90,18 +95,21 @@ services:
       redis:
         condition: service_healthy
       vllm:
-        condition: service_started
+        condition: service_healthy
 
     healthcheck:
+      # 注意：当前代码里 celery 配置关闭了远程控制（worker_enable_remote_control=False），
+      # 所以 `celery inspect ping` 会一直返回 "No nodes replied"，不适合作为健康检查。
+      # 这里改为检查 worker 进程是否存在。
       test: ["CMD-SHELL", "pgrep -f 'celery.*-A src.celery_worker.pdf_process_worker.* worker' >/dev/null || exit 1"]
       interval: 15s
       timeout: 5s
-      retries: 3
-      start_period: 20s
+      retries: 5
+      start_period: 30s
 
     # 使用与宿主机相同的主程序入口，在容器中以前台方式运行
     command: >
-      bash -lc "$PYTHON_PATH src/celery_worker/pdf_process_worker.py"
+      bash -lc "$PYTHON_PATH src/celery_worker/pdf_process_worker.py >> /app/logs/mineru-worker.log"
 
   # vLLM 推理后端容器
   vllm:
@@ -135,24 +143,21 @@ services:
     # vLLM 对多 GPU 会在容器内启动多个进程
     ipc: host
 
-    depends_on:
-      - redis
-
     healthcheck:
       test:
         - CMD-SHELL
         - >
-          if [ -z "${CUDA_VISIBLE_DEVICES}" ]; then echo "no CUDA_VISIBLE_DEVICES"; exit 1; fi;
+          if [ -z "$${CUDA_VISIBLE_DEVICES}" ]; then echo "no CUDA_VISIBLE_DEVICES"; exit 1; fi;
           i=0;
-          for g in $(echo "$CUDA_VISIBLE_DEVICES" | tr ',' ' '); do
-            port=$((8000 + i));
-            curl -fsS "http://localhost:${port}/v1/models" >/dev/null || exit 1;
-            i=$((i+1));
+          for g in $$(echo "$${CUDA_VISIBLE_DEVICES}" | tr ',' ' '); do
+            port=$$((8000 + i));
+            curl -fsS "http://localhost:$$port/v1/models" >/dev/null || exit 1;
+            i=$$((i+1));
           done
       interval: 20s
       timeout: 5s
       retries: 5
-      start_period: 60s
+      start_period: 90s
 
     # 启动 vLLM 后端，并通过 tail -f 保持容器前台进程不退出
     command: >
