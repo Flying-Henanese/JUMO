@@ -137,40 +137,40 @@ WORKDIR /app
 # 除了这个虚拟环境，一阶段的内容不会被复制到运行时镜像中
 COPY --from=builder /app/.venv /app/.venv
 
-# 复制项目代码
-COPY . .
+# # 复制项目代码
+# COPY . .
 
-# 赋予脚本可执行权限
-RUN chmod +x manage_services.sh src/celery_worker/*.sh *.sh
+# # 赋予脚本可执行权限
+# RUN chmod +x manage_services.sh src/celery_worker/*.sh *.sh
 
-# 预先下载 NLTK 数据 (punkt_tab)，使用国内镜像加速
-# (还是使用卷挂载吧，每次构建下载太慢了)
-# RUN /app/.venv/bin/python -c "import nltk; nltk.downloader.Downloader.INDEX_URL = 'https://raw.gitmirror.com/nltk/nltk_data/gh-pages/index.xml'; nltk.download('punkt_tab')"
+# # 预先下载 NLTK 数据 (punkt_tab)，使用国内镜像加速
+# # (还是使用卷挂载吧，每次构建下载太慢了)
+# # RUN /app/.venv/bin/python -c "import nltk; nltk.downloader.Downloader.INDEX_URL = 'https://raw.gitmirror.com/nltk/nltk_data/gh-pages/index.xml'; nltk.download('punkt_tab')"
 
-# 设置环境变量默认值
-# 设置这个环境变量，让mineru从modelscope获取模型
-ENV MINERU_MODEL_SOURCE=modelscope
-# 让 vLLM 也使用 ModelScope 下载/加载模型(其实在vLLM的启动脚本中已经默认开启了，这里双保险)
-ENV VLLM_USE_MODELSCOPE=True
-# 从huggingface镜像站获取模型(当前整个项目中应该只有sentencetransformer模型会从huggingface获取)
-ENV HF_ENDPOINT=https://hf-mirror.com
-# 指定API服务的端口号，后续会传入fastapi服务中
-ENV API_SERVICE_PORT=5116
-# 暴露端口
-EXPOSE ${API_SERVICE_PORT} 30000
+# # 设置环境变量默认值
+# # 设置这个环境变量，让mineru从modelscope获取模型
+# ENV MINERU_MODEL_SOURCE=modelscope
+# # 让 vLLM 也使用 ModelScope 下载/加载模型(其实在vLLM的启动脚本中已经默认开启了，这里双保险)
+# ENV VLLM_USE_MODELSCOPE=True
+# # 从huggingface镜像站获取模型(当前整个项目中应该只有sentencetransformer模型会从huggingface获取)
+# ENV HF_ENDPOINT=https://hf-mirror.com
+# # 指定API服务的端口号，后续会传入fastapi服务中
+# ENV API_SERVICE_PORT=5116
+# # 暴露端口
+# EXPOSE ${API_SERVICE_PORT} 30000
 
-# 设置 Python 和 Celery 的执行路径 (否则会使用系统默认的python和celery，导致运行失败)
-ENV PYTHON_PATH=/app/.venv/bin/python
-ENV CELERY_PATH=/app/.venv/bin/celery
+# # 设置 Python 和 Celery 的执行路径 (否则会使用系统默认的python和celery，导致运行失败)
+# ENV PYTHON_PATH=/app/.venv/bin/python
+# ENV CELERY_PATH=/app/.venv/bin/celery
 
-# 将 src 目录加入 PYTHONPATH，确保 Python 能正确解析包结构
-ENV PYTHONPATH=/app/src
+# # 将 src 目录加入 PYTHONPATH，确保 Python 能正确解析包结构
+# ENV PYTHONPATH=/app/src
 
-# 声明挂载点，以便在运行时挂载宿主机缓存目录
-# 这样可以复用宿主机的模型缓存，避免每次启动容器的时候重复下载大量模型文件
-# 当然这里只是一个声明，并不能确保宿主机上的缓存目录会被挂载到容器中
-# 所以在运行容器时，需要使用-v参数挂载宿主机上的缓存目录到容器中
-VOLUME ["/root/.cache/huggingface", "/root/.cache/modelscope", "/root/.cache/vllm", "/root/nltk_data"]
+# # 声明挂载点，以便在运行时挂载宿主机缓存目录
+# # 这样可以复用宿主机的模型缓存，避免每次启动容器的时候重复下载大量模型文件
+# # 当然这里只是一个声明，并不能确保宿主机上的缓存目录会被挂载到容器中
+# # 所以在运行容器时，需要使用-v参数挂载宿主机上的缓存目录到容器中
+# VOLUME ["/root/.cache/huggingface", "/root/.cache/modelscope", "/root/.cache/vllm", "/root/nltk_data"]
 
-# 启动命令
-CMD ["bash", "manage_services.sh", "start"]
+# # 启动命令
+# CMD ["bash", "manage_services.sh", "start"]
