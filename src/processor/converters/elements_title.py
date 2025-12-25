@@ -1,7 +1,23 @@
+"""
+Markdown Table Title Enhancement
+================================
+
+This module provides heuristics to associate table captions with table content in Markdown text.
+It parses the Markdown structure to identify headings that look like table captions (e.g., "Table 1: ...")
+and merges them into the corresponding table headers if they are adjacent.
+
+Key Functions:
+--------------
+-   `enhance_table_titles`: The main function to process Markdown text and merge titles.
+"""
 import re
 
 
 def _detect_table_caption(text: str):
+    """
+    Detects if a string resembles a table caption.
+    Matches patterns like "表 1", "Table 1", etc.
+    """
     t = (text or "").strip()
     if not t:
         return None
@@ -19,14 +35,20 @@ def _detect_table_caption(text: str):
 
 
 def _is_heading(line: str):
+    """Checks if a line is a Markdown heading (starts with #)."""
     return bool(re.match(r'^\s*#{1,6}\s+.+', line or ""))
 
 
 def _get_heading_text(line: str):
+    """Extracts the text content from a Markdown heading line."""
     return re.sub(r'^\s*#{1,6}\s+', '', line).strip()
 
 
 def _is_table_line(line: str):
+    """
+    Checks if a line belongs to a Markdown table.
+    A table line typically starts with `|` or contains multiple `|` separators.
+    """
     s = (line or '').strip()
     if not s:
         return False
@@ -38,11 +60,24 @@ def _is_table_line(line: str):
 
 
 def _contains_table_keyword(text: str):
+    """Checks if the text contains keywords 'table' or '表' (case-insensitive)."""
     t = (text or "").lower()
     return ('table' in t) or ('表' in t)
 
 
 def enhance_table_titles(md_text: str) -> str:
+    """
+    Scans Markdown text to associate headings with subsequent tables.
+
+    If a heading contains table keywords (e.g., "Table 1") and is followed by a table,
+    the heading text is merged into the table structure or formatted to ensure association.
+
+    Args:
+        md_text (str): The input Markdown text.
+
+    Returns:
+        str: The processed Markdown text with enhanced table titles.
+    """
     lines = md_text.split('\n')
     n = len(lines)
     i = 0

@@ -1,3 +1,36 @@
+"""
+Markdown Semantic Splitter and Header Enhancer
+==============================================
+
+This module is responsible for post-processing Markdown content to make it suitable for
+knowledge base indexing (RAG applications). It performs semantic chunking of text and
+reconstructs hierarchical headers to ensure that every text chunk preserves its context.
+
+Key Features:
+-------------
+1.  **Semantic Chunking**:
+    -   Uses `SentenceTransformer` (e.g., BAAI/bge-small-zh-v1.5) to generate embeddings for sentences.
+    -   Applies `AgglomerativeClustering` to group semantically similar sentences into chunks.
+    -   Dynamically determines the optimal number of clusters based on content length.
+
+2.  **Header Reconstruction**:
+    -   Parses Markdown into a token stream using `markdown-it-py`.
+    -   Maintains a stack of current headings (H1-H6) while traversing the document.
+    -   Injects the full path of parent headings (e.g., `# H1 > H2 > H3`) into every text block.
+    -   Ensures that even small chunks of text carry their structural context, which is crucial for vector retrieval.
+
+3.  **Special Block Handling**:
+    -   Detects and preserves tables, lists, code blocks, and math formulas.
+    -   Treats these blocks as atomic units or segments them appropriately while keeping their headers.
+
+Usage:
+------
+The main entry point is `process_markdown(md_text, max_length=500)`.
+It inputs raw Markdown text and outputs a processed Markdown string where:
+-   Long paragraphs are semantically split.
+-   Every block is preceded by its hierarchical headers.
+-   Blocks are separated by `----------`.
+"""
 from markdown_it import MarkdownIt
 from mdit_py_plugins.dollarmath import dollarmath_plugin
 import re

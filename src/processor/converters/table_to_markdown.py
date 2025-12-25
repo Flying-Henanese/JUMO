@@ -1,3 +1,16 @@
+"""
+HTML Table to Markdown Converter
+================================
+
+This module handles the conversion of HTML table structures into Markdown tables.
+It is often used as a post-processing step for OCR or layout analysis tools that output HTML tables.
+
+Key Features:
+-------------
+-   **`html_table_to_markdown`**: Parses HTML string and converts `<table>` tags to Markdown pipe tables.
+-   **`patch_batchanalyze_output_to_markdown`**: Monkey-patches the `BatchAnalyze` class from `mineru`
+    to automatically convert its HTML table output to Markdown.
+"""
 from bs4 import BeautifulSoup
 from mineru.backend.pipeline.batch_analyze import BatchAnalyze
 from loguru import logger

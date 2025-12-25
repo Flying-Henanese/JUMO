@@ -1,3 +1,34 @@
+"""
+Celery Worker Module for PDF Processing
+=======================================
+
+This module defines the Celery worker responsible for processing PDF files in the MinerU Service.
+It handles the asynchronous execution of PDF processing tasks, managing resources such as
+database connections, MinIO storage connections, and the PDF processing model.
+
+Key Features:
+-------------
+1.  **Task Definition**: Defines the `process_pdf_celery` task, which is the entry point for
+    processing a single PDF task. It handles task status updates (PROCESSING, COMPLETED, FAILED)
+    and invokes the underlying `PDFProcessor`.
+
+2.  **Resource Initialization**: Uses the `@worker_process_init` signal to initialize heavy
+    resources (TaskRepository, MinioConnection, PDFProcessor) once per worker process.
+    This includes setting up GPU context and applying necessary monkey patches to underlying libraries.
+
+3.  **Multi-GPU Support**: The `__main__` block allows this script to be executed directly to
+    spawn multiple Celery worker processes. It automatically detects available CUDA devices
+    and launches a separate worker process for each GPU (or a CPU worker if no GPU is available),
+    setting appropriate environment variables (e.g., `CUDA_VISIBLE_DEVICES`, `VLLM_SERVER_URL`)
+    for each process.
+
+Usage:
+------
+This module is typically run as a standalone script to start the workers:
+    $ python src/celery_worker/pdf_process_worker.py
+
+It can also be imported to access the `process_pdf_celery` task for dispatching tasks.
+"""
 from loguru import logger
 import os
 from celery_worker.celery_config import settings  # 集中配置

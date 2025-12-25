@@ -1,3 +1,15 @@
+"""
+File Format Converters
+======================
+
+This module provides utility functions for converting office documents to intermediate formats
+using LibreOffice. It is primarily used to normalize input files (e.g., .doc to .docx, or Office to PDF)
+before further processing.
+
+Dependencies:
+-------------
+-   **LibreOffice (`soffice`)**: Must be installed and available in the system PATH.
+"""
 import subprocess
 import tempfile
 from pathlib import Path

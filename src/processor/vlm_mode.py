@@ -1,3 +1,37 @@
+"""
+VLM-based PDF Processor
+=======================
+
+This module defines the `PDFProcessor` class, which orchestrates the processing of PDF documents
+(and other formats converted to PDF) using a Vision-Language Model (VLM) backend.
+
+Workflow:
+---------
+1.  **Input Handling**:
+    -   Downloads the source file from MinIO.
+    -   Converts non-PDF formats (Images, Word, Excel) to PDF.
+    -   Validates file extensions against allowed types.
+
+2.  **VLM Analysis (`doc_analyze`)**:
+    -   Sends the PDF content to the MinerU VLM backend (via HTTP) for layout analysis and OCR.
+    -   Configures processing parameters (formula/table recognition, OCR language) based on task settings.
+    -   Generates intermediate JSON (`middle_json`) containing detailed document structure.
+
+3.  **Content Generation**:
+    -   Extracts images and uploads them to MinIO.
+    -   Generates Markdown content (`vlm_union_make`).
+    -   Performs post-processing on Markdown (semantic splitting, header enhancement).
+
+4.  **Result Storage**:
+    -   Uploads all artifacts (Markdown, JSON, Images) to the output MinIO bucket.
+    -   Updates the task status and output info in the database.
+
+Dependencies:
+-------------
+-   `mineru` backend for core PDF analysis.
+-   `minio_tool` for file storage operations.
+-   `TaskRepository` for database updates.
+"""
 import os
 import tempfile
 import json
