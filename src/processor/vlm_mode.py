@@ -139,8 +139,8 @@ class PDFProcessor:
                               f"{current_task.task_id}/images")  
                 
                 clean_md = md_str.encode("utf-8", "surrogatepass").decode("utf-8", "ignore")
-                if not current_task.formula_enabled:
-                    clean_md = strip_latex_from_markdown(clean_md)
+                # if not current_task.formula_enabled:
+                #     clean_md = strip_latex_from_markdown(clean_md)
                 self.minio_tool.upload_file_by_bytes(
                     bucket_name=current_task.output_bucket,
                     object_name=f"{current_task.task_id}/{name_without_ext}.md",
@@ -166,10 +166,11 @@ class PDFProcessor:
                 )
 
                 # middle_json 内容
-                middle_json_content = json.dumps(middle_json, ensure_ascii=False, indent=4).encode("utf-8","surrogatepass").decode("utf-8","ignore")
                 # 如果禁用了公式识别，从JSON结构中移除所有LaTeX表达式
-                if not current_task.formula_enabled:
-                    middle_json_content = strip_latex_from_json_structure(middle_json_content)
+                # if not current_task.formula_enabled:
+                #     middle_json = strip_latex_from_json_structure(middle_json)
+                
+                middle_json_content = json.dumps(middle_json, ensure_ascii=False, indent=4).encode("utf-8","surrogatepass").decode("utf-8","ignore")
                 self.minio_tool.upload_file_by_bytes(
                     bucket_name=current_task.output_bucket,
                     object_name=f"{current_task.task_id}/{name_without_ext}_middle.json",

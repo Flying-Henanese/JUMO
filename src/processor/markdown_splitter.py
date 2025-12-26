@@ -86,7 +86,10 @@ def split_sentences_chinese(text):
     """
     使用正则表达式按中文标点分句，同时保留句尾标点
     """
-    sentences = re.split(r'(?<=[。！？])', text)
+    # 1. (?<=[。！？])(?![”’"]) : 匹配标点符号，且后面不是引号
+    # 2. (?<=[。！？][”’"])    : 匹配标点符号后紧跟引号的组合
+    pattern = r'(?<=[。！？])(?![”’"])|(?<=[。！？][”’"])'
+    sentences = re.split(pattern, text)
     return [s.strip() for s in sentences if s.strip()]
 
 def split_mixed_sentences(text: str) -> list[str]:
@@ -341,6 +344,9 @@ def process_markdown(md_text: str, max_length: int = 500) -> str:
             logger.warning(f"无法处理的token类型: {token.type}, 内容: {getattr(token, 'content', 'N/A')}")
             i += 1
 
+    # 循环结束后，将剩余的内容写入结果
+    _flush_content(result, current_content, title_stack, max_length)
+
     if result and result[-1] == '-' * 10:
         result.pop()
     return '\n'.join(result)
@@ -350,10 +356,10 @@ def process_markdown(md_text: str, max_length: int = 500) -> str:
 # 测试代码
 if __name__ == "__main__":
     # 使用cuda:3设备进行推理
-    os.environ['CUDA_VISIBLE_DEVICES'] = '3'
-    os.environ['DEFAULT_CUDA_DEVICE'] = 'cuda:3'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    os.environ['DEFAULT_CUDA_DEVICE'] = 'cuda:0'
     os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
-    with open("tests/test_resource/dqfd_1.md", 'r', encoding='utf-8') as f:
+    with open("tests/test_resource/test.md", 'r', encoding='utf-8') as f:
         md_text = f.read()
     processed_md = process_markdown(md_text, max_length=500) 
     out_file = "tests/test_resource/processed_test.md"
