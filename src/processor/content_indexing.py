@@ -38,6 +38,7 @@ import re
 import pickle
 import os
 import tempfile
+import base64
 from data.redis.cache_service import CacheService
 from utils.minio_tool import MinioConnection
 
@@ -266,7 +267,8 @@ class DocumentIndexService:
             document_index = DocumentIndex.from_middle_json(middle_json)
             
             # 序列化DocumentIndex对象并存入Redis
-            serialized_data = pickle.dumps(document_index)
+            # 使用base64编码避免特殊字符导致的问题
+            serialized_data = base64.b64encode(pickle.dumps(document_index))
             redis_key = f"document_index:{task_id}"
             self.cache_service.set(redis_key, serialized_data)
             
@@ -295,7 +297,12 @@ class DocumentIndexService:
                 raise ValueError(f"No document index found for task {task_id}")
             
             # 反序列化DocumentIndex对象
-            document_index: DocumentIndex = pickle.loads(serialized_data)
+            # 兼容旧数据：尝试先base64解码，如果失败则假设是旧数据直接反序列化
+            try:
+                decoded_data = base64.b64decode(serialized_data)
+                document_index: DocumentIndex = pickle.loads(decoded_data)
+            except Exception:
+                document_index: DocumentIndex = pickle.loads(serialized_data)
             
             # 搜索关键词
             results = document_index.search(keyword)

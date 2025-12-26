@@ -56,6 +56,7 @@ from data.operation import TaskRepository
 from processor.markdown_splitter import process_markdown
 from processor.converters.file_converters import office_bytes_to_pdf_bytes
 from PIL import Image
+from processor.converters.markdown_math_stripper import strip_latex_from_json_structure,strip_latex_from_markdown
 
 class PDFProcessor:
     def __init__(self, minio_tool: MinioConnection, task_repository: TaskRepository):
@@ -105,11 +106,10 @@ class PDFProcessor:
 
                 os.environ['MINERU_VLM_FORMULA_ENABLE'] = 'true' if bool(current_task.formula_enabled) else 'false'
                 os.environ['MINERU_VLM_TABLE_ENABLE'] = 'true' if bool(current_task.table_enabled) else 'false'
-                os.environ['MINERU_FORMULA_ENABLE'] = os.environ['MINERU_VLM_FORMULA_ENABLE']
-                os.environ['MINERU_TABLE_ENABLE'] = os.environ['MINERU_VLM_TABLE_ENABLE']
+                os.environ['MINERU_FORMULA_ENABLE'] = 'true' if bool(current_task.formula_enabled) else 'false'
+                os.environ['MINERU_TABLE_ENABLE'] = 'true' if bool(current_task.table_enabled) else 'false'
                 os.environ['MINERU_VLM_OCR_LANG'] = str(current_task.ocr_lang)
                 server_url = os.getenv("VLLM_SERVER_URL", "http://localhost:8000/v1")
-                
                 # 注意：OCR语言通过函数参数传递，不是环境变量
                 middle_json, infer_result = doc_analyze(                                     # ★
                     pdf_bytes,
@@ -139,6 +139,8 @@ class PDFProcessor:
                               f"{current_task.task_id}/images")  
                 
                 clean_md = md_str.encode("utf-8", "surrogatepass").decode("utf-8", "ignore")
+                if not current_task.formula_enabled:
+                    clean_md = strip_latex_from_markdown(clean_md)
                 self.minio_tool.upload_file_by_bytes(
                     bucket_name=current_task.output_bucket,
                     object_name=f"{current_task.task_id}/{name_without_ext}.md",
@@ -165,6 +167,9 @@ class PDFProcessor:
 
                 # middle_json 内容
                 middle_json_content = json.dumps(middle_json, ensure_ascii=False, indent=4).encode("utf-8","surrogatepass").decode("utf-8","ignore")
+                # 如果禁用了公式识别，从JSON结构中移除所有LaTeX表达式
+                if not current_task.formula_enabled:
+                    middle_json_content = strip_latex_from_json_structure(middle_json_content)
                 self.minio_tool.upload_file_by_bytes(
                     bucket_name=current_task.output_bucket,
                     object_name=f"{current_task.task_id}/{name_without_ext}_middle.json",
