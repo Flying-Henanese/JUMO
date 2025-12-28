@@ -43,7 +43,7 @@ import nltk
 from nltk.tokenize import sent_tokenize
 import threading
 from loguru import logger
-from utils.device_selector import get_device
+from utils.auto_device_selector import get_device
 #from .named_entity_recognition import append_entities_to_header  # 引入自动实体提取函数
 
 

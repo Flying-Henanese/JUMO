@@ -33,13 +33,14 @@ from loguru import logger
 import os
 from celery_worker.celery_config import settings  # 集中配置
 from celery_worker.celery_server import celery_app, DEFAULT_QUEUE_NAME, TASK_NAME_PROCESS_PDF
-from celery_worker.celery_config import parse_cuda_devices as _parse_cuda_devices
+from celery_worker.celery_config import parse_inference_devices as _parse_inference_devices
 from data.operation import TaskRepository
 from utils.minio_tool import MinioConnection
 from data.model import Task
 from const.task_status_enum import TaskStatus
 import subprocess
 from celery.signals import worker_process_init
+from utils.auto_device_selector import get_env_vars_for_device, get_device_type
 
 
 _repo = None
@@ -53,14 +54,19 @@ def _init_services(**kwargs):
     # 获取主进程分配的 GPU 设备 ID
     assigned = os.getenv("WORKER_GPU_DEVICE")
     
-    # 如果分配了 GPU，设置 CUDA_VISIBLE_DEVICES
+    # 如果分配了 GPU/NPU，根据硬件类型设置相应的环境变量
     if assigned:
-        os.environ["CUDA_VISIBLE_DEVICES"] = assigned
+        env_vars = get_env_vars_for_device(assigned)
+        os.environ.update(env_vars)
+        
+        # 尝试设置 PyTorch 设备（主要是 CUDA 需要显式 set_device，虽然环境变量已经隔离了）
         try:
             import torch
-            if torch.cuda.is_available():
-                # 由于设置了 CUDA_VISIBLE_DEVICES，当前进程看到的 GPU 索引始终是 0
+            device_type = get_device_type()
+            if device_type == "cuda" and torch.cuda.is_available():
                 torch.cuda.set_device(0)
+            elif device_type == "npu" and torch.npu.is_available():
+                torch.npu.set_device(0)
         except Exception:
             pass
             
@@ -134,18 +140,18 @@ def process_pdf_celery(self, task_id: str):
 
     return {"status": "ok", "task_id": task_id}
 
-# 自启动：按 CUDA_VISIBLE_DEVICES 自动生成多个 worker（每个设备一个）
+# 自启动：按 INFERENCE_DEVICES 自动生成多个 worker（每个设备一个）
 
 if __name__ == "__main__":
     os.environ.setdefault('HF_ENDPOINT', settings.HF_ENDPOINT)
-    os.environ.setdefault('CUDA_VISIBLE_DEVICES', settings.CUDA_VISIBLE_DEVICES)
+    os.environ.setdefault('INFERENCE_DEVICES', settings.INFERENCE_DEVICES)
     # 不再硬编码 CUDA_VISIBLE_DEVICES，由部署环境注入
-    devices = _parse_cuda_devices()
+    devices = _parse_inference_devices()
     if not devices:
         devices = [None]  # CPU 回退
     
     procs = []
-    for idx, d in enumerate[str | None](devices):
+    for idx, d in enumerate(devices):
         env = os.environ.copy()
         q = os.getenv("WORKER_QUEUE_NAME", DEFAULT_QUEUE_NAME)
         env["WORKER_QUEUE_NAME"] = q
@@ -154,6 +160,10 @@ if __name__ == "__main__":
         env["VLLM_SERVER_URL"] = f"http://{base_endpoint}:{base_port + idx}/v1"
         if d is not None:
             env["WORKER_GPU_DEVICE"] = str(d)
+            # 使用 auto_device_selector 获取正确的环境变量（兼容 CUDA 和 NPU）
+            device_env = get_env_vars_for_device(str(d))
+            env.update(device_env)
+            
             worker_name = f"worker_{q}_{d}@%h"
         else:
             worker_name = f"worker_{q}_cpu@%h"

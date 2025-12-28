@@ -33,7 +33,7 @@ class Settings:
     CELERY_REDIS_DB_BACKEND: int = int(os.getenv("CELERY_REDIS_DB_BACKEND", "1"))
     WORKER_QUEUE_NAME: str = os.getenv("WORKER_QUEUE_NAME", "celery")
     HF_ENDPOINT: str = os.getenv("HF_ENDPOINT", "https://hf-mirror.com")
-    CUDA_VISIBLE_DEVICES: str = os.getenv("CUDA_VISIBLE_DEVICES", "0").strip()
+    INFERENCE_DEVICES: str = os.getenv("INFERENCE_DEVICES", "0").strip()
 
 settings = Settings()
 
@@ -55,14 +55,14 @@ def build_redis_url(db_index: int) -> str:
         return f"redis://{username}:{password}@{host}:{port}/{db_index}"
     return f"redis://{host}:{port}/{db_index}"
 
-def parse_cuda_devices() -> list[str]:
+def parse_inference_devices() -> list[str]:
     """
-    从环境变量中获取 CUDA_VISIBLE_DEVICES 配置，解析为设备列表。
-    用于后续的 Celery 任务分配到不同的 GPU 设备上。
+    从环境变量中获取 INFERENCE_DEVICES 配置，解析为设备列表。
+    用于后续的 Celery 任务分配到不同的 GPU/NPU 设备上。
     
-    :return: 解析后的 CUDA 设备列表
+    :return: 解析后的设备列表
     """
-    s = settings.CUDA_VISIBLE_DEVICES
+    s = settings.INFERENCE_DEVICES
     if not s:
         return []
     return [p.strip() for p in s.split(",") if p.strip()]
