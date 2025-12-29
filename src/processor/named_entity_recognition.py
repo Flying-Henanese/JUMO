@@ -40,7 +40,7 @@ import torch
 from transformers import AutoTokenizer, AutoModelForTokenClassification, pipeline
 from typing import List, Dict, Any, Optional
 from loguru import logger
-from utils.device_selector import get_device
+from utils.auto_device_selector import get_device
 from utils.singleton import parameterized_singleton
 from transformers.pipelines import Pipeline
 from transformers.modeling_utils import PreTrainedModel

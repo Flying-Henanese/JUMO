@@ -95,7 +95,7 @@ services:
       - UPLOAD_BUCKET=${UPLOAD_BUCKET}
 
       # GPU 配置（根据实际 GPU 调整）
-      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+      - INFERENCE_DEVICES=${INFERENCE_DEVICES:-0}
 
     volumes:
       # 挂载日志目录，实现日志持久化
@@ -153,7 +153,7 @@ services:
       - PYTHONPATH=/app/src
       - HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
       - MINERU_MODEL_SOURCE=${MINERU_MODEL_SOURCE:-modelscope}
-      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+      - INFERENCE_DEVICES=${INFERENCE_DEVICES:-0}
       - VLLM_RPC_TIMEOUT=${VLLM_RPC_TIMEOUT:-120000}
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       # 用于健康检查的端口列表，逗号分隔，默认只检查 8000
@@ -181,9 +181,9 @@ services:
       test:
         - CMD-SHELL
         - >
-          if [ -z "$${CUDA_VISIBLE_DEVICES}" ]; then echo "no CUDA_VISIBLE_DEVICES"; exit 1; fi;
+          if [ -z "$${INFERENCE_DEVICES}" ]; then echo "no INFERENCE_DEVICES"; exit 1; fi;
           i=0;
-          for g in $$(echo "$${CUDA_VISIBLE_DEVICES}" | tr ',' ' '); do
+          for g in $$(echo "$${INFERENCE_DEVICES}" | tr ',' ' '); do
             port=$$((8000 + i));
             curl -fsS "http://localhost:$$port/v1/models" >/dev/null || exit 1;
             i=$$((i+1));
@@ -193,9 +193,9 @@ services:
       retries: 5
       start_period: 90s
 
-    # 启动 vLLM 后端，并通过 tail -f 保持容器前台进程不退出
+    # 启动 vLLM 后端：由 Python launcher 负责按 INFERENCE_DEVICES 拉起多个实例并监督进程
     command: >
-      bash -lc "src/celery_worker/vllm_backend_start.sh && tail -f /dev/null"
+      bash -lc "$PYTHON_PATH -u src/celery_worker/vllm_backend_start.py"
 
   # Redis 容器，其他服务通过服务名 redis 访问
   redis:
