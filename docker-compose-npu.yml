@@ -199,16 +199,16 @@ services:
       test:
         - CMD-SHELL
         - >
-          if [ -z "${INFERENCE_DEVICES}" ]; then echo "no INFERENCE_DEVICES"; exit 1; fi;
+          if [ -z "$${INFERENCE_DEVICES}" ]; then echo "no INFERENCE_DEVICES"; exit 1; fi;
           i=0;
-          for g in $(echo "${INFERENCE_DEVICES}" | tr ',' ' '); do
+          for g in $(echo "$${INFERENCE_DEVICES}" | tr ',' ' '); do
             port=$((8000 + i));
-            curl -fsS "http://localhost:$port/v1/models" >/dev/null || exit 1;
+            curl -fsS "http://localhost:$$port/v1/models" >/dev/null || exit 1;
             i=$((i+1));
           done
       interval: 30s
       timeout: 5s
-      retries: 5
+      retries: 8
       start_period: 150s
 
     # 启动 vLLM 后端，并通过 tail -f 保持容器前台进程不退出
