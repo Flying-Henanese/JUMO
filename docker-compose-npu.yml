@@ -60,7 +60,7 @@ services:
         if [ -f /usr/local/Ascend/ascend-toolkit/set_env.sh ]; then
           source /usr/local/Ascend/ascend-toolkit/set_env.sh
         fi
-        $PYTHON_PATH src/mineru_service.py
+        $${PYTHON_PATH} src/mineru_service.py
       "
 
   # Celery Worker 容器
@@ -74,6 +74,7 @@ services:
       - MODEL=${MODEL:-opendatalab/MinerU2.5-2509-1.2B}
       - PYTHON_PATH=${PYTHON_PATH:-python}
       - PYTHONPATH=/app/src
+      - PYTHON_PATH=${PYTHON_PATH:-python}
       - HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
       - MINERU_MODEL_SOURCE=${MINERU_MODEL_SOURCE:-modelscope}
 
@@ -149,7 +150,7 @@ services:
 
     # 使用与宿主机相同的主程序入口，在容器中以前台方式运行
     command: >
-      bash -lc "$PYTHON_PATH src/celery_worker/pdf_process_worker.py >> /app/logs/mineru-worker.log"
+      bash -lc "$${PYTHON_PATH} src/celery_worker/pdf_process_worker.py >> /app/logs/mineru-worker.log"
 
   # vLLM 推理后端容器
   vllm:
