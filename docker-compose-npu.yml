@@ -72,7 +72,9 @@ services:
 
       # GPU 配置（根据实际 GPU 调整）
       # - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
-      - ASCEND_RT_VISIBLE_DEVICES=${ASCEND_RT_VISIBLE_DEVICES:-0}
+      - INFERENCE_DEVICES=${INFERENCE_DEVICES:-0}
+      # 为了兼容性，将 INFERENCE_DEVICES 映射到 ASCEND_RT_VISIBLE_DEVICES
+      - ASCEND_RT_VISIBLE_DEVICES=${INFERENCE_DEVICES:-0}
 
     volumes:
       - ./logs:/app/logs
@@ -133,7 +135,9 @@ services:
       - HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
       - MINERU_MODEL_SOURCE=${MINERU_MODEL_SOURCE:-modelscope}
       # - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
-      - ASCEND_RT_VISIBLE_DEVICES=${ASCEND_RT_VISIBLE_DEVICES:-0}
+      - INFERENCE_DEVICES=${INFERENCE_DEVICES:-0}
+      # 为了兼容性，将 INFERENCE_DEVICES 映射到 ASCEND_RT_VISIBLE_DEVICES
+      - ASCEND_RT_VISIBLE_DEVICES=${INFERENCE_DEVICES:-0}
       - VLLM_RPC_TIMEOUT=${VLLM_RPC_TIMEOUT:-120000}
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       # Ascend NPU 优化配置
@@ -142,6 +146,8 @@ services:
       - VLLM_TORCH_COMPILE_CACHE_DIR=/root/.cache/vllm/torch_compile_cache
       # 强制设置 Block Size 为 128 (Ascend NPU 要求)
       - VLLM_BLOCK_SIZE=128
+      # 控制 vLLM 实例启动的间隔时间（秒），默认为 10。设置为 0 以并行启动。
+      - VLLM_STARTUP_STAGGER_SECONDS=${VLLM_STARTUP_STAGGER_SECONDS:-0}
       # 用于健康检查的端口列表，逗号分隔，默认只检查 8000
 
     volumes:
@@ -163,12 +169,12 @@ services:
       test:
         - CMD-SHELL
         - >
-          if [ -z "$${ASCEND_RT_VISIBLE_DEVICES}" ]; then echo "no ASCEND_RT_VISIBLE_DEVICES"; exit 1; fi;
+          if [ -z "${INFERENCE_DEVICES}" ]; then echo "no INFERENCE_DEVICES"; exit 1; fi;
           i=0;
-          for g in $$(echo "$${ASCEND_RT_VISIBLE_DEVICES}" | tr ',' ' '); do
-            port=$$((8000 + i));
-            curl -fsS "http://localhost:$$port/v1/models" >/dev/null || exit 1;
-            i=$$((i+1));
+          for g in $(echo "${INFERENCE_DEVICES}" | tr ',' ' '); do
+            port=$((8000 + i));
+            curl -fsS "http://localhost:$port/v1/models" >/dev/null || exit 1;
+            i=$((i+1));
           done
       interval: 30s
       timeout: 5s
