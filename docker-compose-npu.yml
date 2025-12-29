@@ -9,7 +9,7 @@ services:
       - "${API_SERVICE_PORT:-5116}:${API_SERVICE_PORT:-5116}"   # 宿主 5116 -> 容器 5116 (FastAPI)
     environment:
       - API_SERVICE_PORT=${API_SERVICE_PORT:-5116}
-      - PYTHON_PATH=${PYTHON_PATH}
+      - PYTHON_PATH=${PYTHON_PATH:-python}
       - PYTHONPATH=/app/src
       - REDIS_HOST=redis # Redis 配置（通过docker-compose内的服务名redis访问）
       - REDIS_PORT=${REDIS_PORT:-6379}
@@ -72,7 +72,7 @@ services:
     environment:
       # 模型与下载源配置
       - MODEL=${MODEL:-opendatalab/MinerU2.5-2509-1.2B}
-      - PYTHON_PATH=${PYTHON_PATH}
+      - PYTHON_PATH=${PYTHON_PATH:-python}
       - PYTHONPATH=/app/src
       - HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
       - MINERU_MODEL_SOURCE=${MINERU_MODEL_SOURCE:-modelscope}
@@ -177,7 +177,7 @@ services:
       - VLLM_STARTUP_STAGGER_SECONDS=${VLLM_STARTUP_STAGGER_SECONDS:-0}
       # 用于健康检查的端口列表，逗号分隔，默认只检查 8000
 
-      - PYTHON_PATH=${PYTHON_PATH}
+      - PYTHON_PATH=${PYTHON_PATH:-python}
       - PYTHONPATH=/app/src
 
     volumes:
