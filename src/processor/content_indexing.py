@@ -1,9 +1,44 @@
+"""
+Document Content Indexing and Search
+====================================
+
+This module implements a system for indexing and searching structured document content.
+It parses hierarchical document data (Pages -> Paragraphs -> Lines -> Spans) and builds
+an index to support efficient keyword searching with coordinate (bounding box) retrieval.
+
+Key Components:
+---------------
+1.  **Data Structures**:
+    -   `SpanInfo`: Smallest semantic unit with text and bounding box.
+    -   `LineInfo`: A line of text composed of multiple spans.
+    -   `ParaBlockInfo`: A paragraph block containing lines, with support for n-gram indexing
+        and keyword highlighting.
+
+2.  **DocumentIndex**:
+    -   Represents the in-memory index of a full document.
+    -   Provides the `search` method to find keyword occurrences across all pages.
+    -   Can be serialized/deserialized for caching.
+
+3.  **DocumentIndexService**:
+    -   Orchestrates the lifecycle of the document index.
+    -   `load_document_index_from_oss`: Downloads `middle.json` from MinIO, parses it into
+        a `DocumentIndex`, and caches it in Redis (pickled).
+    -   `search_keyword_in_document`: Retrieves the index from Redis and performs searches.
+
+Workflow:
+---------
+1.  The `PDFProcessor` (or similar) generates a `middle.json` containing detailed layout info.
+2.  `DocumentIndexService` loads this JSON, builds the object graph, and caches it.
+3.  Client requests to search for a keyword in a document.
+4.  Service fetches the cached index and returns matching text segments with their page coordinates.
+"""
 from typing import List, Tuple, Dict
 import json
 import re
 import pickle
 import os
 import tempfile
+import base64
 from data.redis.cache_service import CacheService
 from utils.minio_tool import MinioConnection
 
@@ -232,7 +267,8 @@ class DocumentIndexService:
             document_index = DocumentIndex.from_middle_json(middle_json)
             
             # 序列化DocumentIndex对象并存入Redis
-            serialized_data = pickle.dumps(document_index)
+            # 使用base64编码避免特殊字符导致的问题
+            serialized_data = base64.b64encode(pickle.dumps(document_index))
             redis_key = f"document_index:{task_id}"
             self.cache_service.set(redis_key, serialized_data)
             
@@ -261,7 +297,12 @@ class DocumentIndexService:
                 raise ValueError(f"No document index found for task {task_id}")
             
             # 反序列化DocumentIndex对象
-            document_index: DocumentIndex = pickle.loads(serialized_data)
+            # 兼容旧数据：尝试先base64解码，如果失败则假设是旧数据直接反序列化
+            try:
+                decoded_data = base64.b64decode(serialized_data)
+                document_index: DocumentIndex = pickle.loads(decoded_data)
+            except Exception:
+                document_index: DocumentIndex = pickle.loads(serialized_data)
             
             # 搜索关键词
             results = document_index.search(keyword)

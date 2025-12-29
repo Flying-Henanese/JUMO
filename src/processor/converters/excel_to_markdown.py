@@ -1,3 +1,16 @@
+"""
+Excel to Markdown Converter
+===========================
+
+This module converts Excel files (.xlsx, .xls) and CSV files into a Markdown-friendly format.
+It is designed to prepare structured data for ingestion into knowledge bases (RAG systems).
+
+Key Features:
+-------------
+-   **Structured Conversion**: Converts each row of the Excel sheet into a structured Markdown block.
+-   **Key Column Highlighting**: Allows specifying "key columns" to generate descriptive headers for each record.
+-   **Format Support**: Supports both standard Excel files (via `openpyxl`) and CSV files.
+"""
 import pandas as pd
 from typing import List
 from loguru import logger

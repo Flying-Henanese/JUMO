@@ -1,3 +1,19 @@
+"""
+Database ORM Models
+===================
+
+This module defines the SQLAlchemy ORM models for the MinerU Service.
+It maps Python objects to database tables, serving as the single source of truth
+for the database schema.
+
+Key Components:
+---------------
+1.  **Base**: The declarative base class for all ORM models.
+2.  **Task**: Represents a PDF processing task, storing metadata, configuration,
+    status, and results.
+3.  **TaskResponse**: A Pydantic model used for API responses, converting ORM objects
+    to a JSON-friendly format.
+"""
 from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -14,9 +30,24 @@ Base = declarative_base()
 
 class Task(Base):
     """
-    任务列表
-    记录所有的分析任务
-    这个类实现的作用就是把ORM模型转换为pydantic模型
+    Task ORM Model
+    --------------
+    Represents a record in the `tasks` table. Each record corresponds to a file processing request.
+
+    Attributes:
+        id (int): Primary key, auto-incremented.
+        task_id (str): Unique identifier for the task (UUID-based).
+        bucket_name (str): Name of the source storage bucket (MinIO/S3).
+        object_key (str): Path/Key of the source file in the bucket.
+        output_bucket (str): Name of the destination storage bucket.
+        formula_enabled (int): Flag to enable formula recognition (1=on, 0=off).
+        ocr_enabled (int): Flag to enable OCR (1=on, 0=off).
+        table_enabled (int): Flag to enable table recognition (1=on, 0=off).
+        ocr_lang (str): Language code for OCR (e.g., 'en', 'ch').
+        output_info (str): JSON string containing processing results or metadata.
+        create_time (datetime): Timestamp when the task was created.
+        finish_time (datetime): Timestamp when the task was completed.
+        status (str): Current status of the task (e.g., 'queued', 'processing', 'done').
     """
     # 表名
     __tablename__ = "tasks" 

@@ -1,3 +1,17 @@
+"""
+Word to Markdown Converter
+==========================
+
+This module utilizes the `docling` library to convert Word documents (.docx) into Markdown format.
+It includes post-processing steps to clean up the output, such as removing the Table of Contents (TOC),
+extracting and uploading images to MinIO, and handling table/caption formatting.
+
+Key Functions:
+--------------
+-   `doc_to_markdown`: The main entry point for conversion.
+-   `_remove_toc`: Heuristic-based removal of TOC sections.
+-   `_insert_images_to_markdown`: Handles image extraction and URL replacement.
+"""
 from docling.document_converter import DocumentConverter
 from docling_core.types.doc import DoclingDocument, DocItemLabel
 from docling.datamodel.base_models import InputFormat
@@ -20,9 +34,15 @@ def doc_to_markdown(
     bucket:str = None
     ) -> str:
     """
-    将 Word 文档（.docx）转换为 Markdown，支持文件路径输入，保留表格、图片和标题层级。
-    :param input_data: 文件路径（str）
-    :return: 转换后的 Markdown 文本
+    Converts a Word document (.docx) to Markdown, preserving tables, images, and hierarchy.
+
+    Args:
+        input_data (str): Path to the input .docx file.
+        task_id (str, optional): Task ID for organizing extracted images in storage. Defaults to "no_specific_task_id".
+        bucket (str, optional): Name of the S3/MinIO bucket to upload extracted images.
+
+    Returns:
+        str: The converted Markdown content.
     """
     # 配置DOCX管道选项以正确处理表格结构
     docx_pipeline_options = PaginatedPipelineOptions()
@@ -53,10 +73,18 @@ def doc_to_markdown(
 
 def _remove_toc(doc: DoclingDocument) -> DoclingDocument:
     """
-    从 DoclingDocument 中删除目录（TOC）相关的 items。
-    通过两类信号识别：
-      1) 类名/类型名包含 toc/table_of_contents
-      2) 文本特征：'目录'/'contents' 标题、点线+页码、纯页码行
+    Removes Table of Contents (TOC) items from the DoclingDocument.
+
+    This function identifies TOC items using two strategies:
+    1.  **Class/Type Name**: Checks if the item's class name contains "toc" or "tableofcontents".
+    2.  **Text Heuristics**: Checks for patterns like "Table of Contents", dot leaders with page numbers,
+        or standalone page numbers (Roman or Arabic).
+
+    Args:
+        doc (DoclingDocument): The parsed document object.
+
+    Returns:
+        DoclingDocument: The document with TOC items removed.
     """
 
     def is_toc_like_item(item) -> bool:
@@ -115,10 +143,20 @@ def _insert_images_to_markdown(
     bucket:str = None
     ) -> str:
     """
-    插入文档中的图片到Markdown内容中
-    :param doc: DoclingDocument对象
-    :param md_content: 原始Markdown内容
-    :return: 包含图片的Markdown内容
+    Extracts images from the document, uploads them to object storage, and updates Markdown references.
+
+    It iterates through the document items to find pictures, extracts the image data,
+    uploads it to the specified MinIO bucket, and replaces the `<!-- image -->` placeholder
+    in the Markdown content with the actual image URL.
+
+    Args:
+        doc (DoclingDocument): The parsed document object containing image data.
+        markdown_content (str): The raw Markdown content with image placeholders.
+        task_id (str): Task ID used for naming the image path in storage.
+        bucket (str): The target bucket name for upload.
+
+    Returns:
+        str: The Markdown content with valid image links.
     """
     image_counter = 0
     # 遍历文档中的图片
@@ -154,11 +192,17 @@ def _insert_images_to_markdown(
 
 def _merge_captions_with_content(doc: DoclingDocument) -> DoclingDocument:
     """
-    将caption元素与其对应的表格或图片合并，形成带标题的内容块。
-    优化版本：基于文档顺序进行单次遍历匹配。
-    
-    :param doc: DoclingDocument对象
-    :return: 处理后的DoclingDocument对象
+    Merges caption elements with their corresponding table or picture elements.
+
+    This function iterates through the document items and attempts to link orphan captions
+    with adjacent tables or images. It looks both backwards and forwards to find the nearest
+    matching content element and combines the text.
+
+    Args:
+        doc (DoclingDocument): The parsed document object.
+
+    Returns:
+        DoclingDocument: The document with captions merged into content items.
     """
     items_to_delete = []
     items_list = list(doc.iterate_items())

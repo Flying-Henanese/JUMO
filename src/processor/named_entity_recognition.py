@@ -1,3 +1,38 @@
+"""
+Named Entity Recognition (NER) Service
+======================================
+
+This module provides a robust service for extracting named entities (PERSON, ORGANIZATION, LOCATION, etc.)
+from text. It supports both Chinese and English languages using pre-trained transformer models.
+
+Key Features:
+-------------
+1.  **Multi-Language Support**:
+    -   Automatically detects the language of the input text.
+    -   Uses `uer/roberta-base-finetuned-cluener2020-chinese` for Chinese text.
+    -   Uses `elastic/distilbert-base-cased-finetuned-conll03-english` for English text.
+
+2.  **Singleton Model Loading**:
+    -   Implements a thread-safe singleton pattern (`SingletonNERModel`) to ensure models are loaded only once
+        and shared across requests, optimizing memory usage.
+    -   Supports loading models onto different devices (CPU, CUDA, MPS, CANN).
+
+3.  **Entity Standardization**:
+    -   Maps model-specific labels (e.g., 'PER', 'ORG') to a unified set of standard types:
+        `PERSON`, `ORGANIZATION`, `LOCATION`, `MISCELLANEOUS`.
+    -   Provides the `Entity` class to encapsulate entity data with validation and cleaning logic.
+
+4.  **Text Reconstruction**:
+    -   Includes logic (`_reconstruct_entity_text_and_bounds`) to fix common tokenizer artifacts,
+        such as merging split sub-words ("##") and correcting boundaries for English words.
+
+Usage:
+------
+The primary entry point is `extract_entities_auto(text)`.
+    >>> entities = extract_entities_auto("Apple is looking at buying U.K. startup for $1 billion")
+    >>> print(entities)
+    [{'entity_group': 'ORGANIZATION', 'entity': 'Apple', ...}, {'entity_group': 'LOCATION', 'entity': 'U.K.', ...}]
+"""
 import os
 import threading
 from collections import OrderedDict
@@ -5,7 +40,7 @@ import torch
 from transformers import AutoTokenizer, AutoModelForTokenClassification, pipeline
 from typing import List, Dict, Any, Optional
 from loguru import logger
-from utils.device_selector import get_device
+from utils.auto_device_selector import get_device
 from utils.singleton import parameterized_singleton
 from transformers.pipelines import Pipeline
 from transformers.modeling_utils import PreTrainedModel

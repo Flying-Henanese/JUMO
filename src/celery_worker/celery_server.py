@@ -1,3 +1,16 @@
+"""
+Celery 服务配置与核心模块
+
+本模块主要负责：
+1. 初始化 Celery 应用实例 (`celery_app`)，供生产者和消费者共同使用。
+2. 配置 Celery 的各项参数，包括 Broker、Backend、序列化方式、时区、并发控制等。
+3. 提供队列管理相关的工具函数，如查询队列长度 (`get_queue_length`)、选择负载最小的队列 (`choose_queue_by_least_backlog`)。
+4. 提供统一的任务发送接口 (`send_pdf_task`)，屏蔽底层任务名称细节。
+
+使用说明：
+- 生产者（如 API 服务）：引用本模块的 `celery_app` 或 `send_pdf_task` 来分发任务。
+- 消费者（Worker）：启动时加载本模块作为 Celery 的入口（app）。
+"""
 from celery import Celery
 import os
 from data.redis.redis_client import RedisClient

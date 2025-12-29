@@ -1,3 +1,36 @@
+"""
+Markdown Semantic Splitter and Header Enhancer
+==============================================
+
+This module is responsible for post-processing Markdown content to make it suitable for
+knowledge base indexing (RAG applications). It performs semantic chunking of text and
+reconstructs hierarchical headers to ensure that every text chunk preserves its context.
+
+Key Features:
+-------------
+1.  **Semantic Chunking**:
+    -   Uses `SentenceTransformer` (e.g., BAAI/bge-small-zh-v1.5) to generate embeddings for sentences.
+    -   Applies `AgglomerativeClustering` to group semantically similar sentences into chunks.
+    -   Dynamically determines the optimal number of clusters based on content length.
+
+2.  **Header Reconstruction**:
+    -   Parses Markdown into a token stream using `markdown-it-py`.
+    -   Maintains a stack of current headings (H1-H6) while traversing the document.
+    -   Injects the full path of parent headings (e.g., `# H1 > H2 > H3`) into every text block.
+    -   Ensures that even small chunks of text carry their structural context, which is crucial for vector retrieval.
+
+3.  **Special Block Handling**:
+    -   Detects and preserves tables, lists, code blocks, and math formulas.
+    -   Treats these blocks as atomic units or segments them appropriately while keeping their headers.
+
+Usage:
+------
+The main entry point is `process_markdown(md_text, max_length=500)`.
+It inputs raw Markdown text and outputs a processed Markdown string where:
+-   Long paragraphs are semantically split.
+-   Every block is preceded by its hierarchical headers.
+-   Blocks are separated by `----------`.
+"""
 from markdown_it import MarkdownIt
 from mdit_py_plugins.dollarmath import dollarmath_plugin
 import re
@@ -10,7 +43,7 @@ import nltk
 from nltk.tokenize import sent_tokenize
 import threading
 from loguru import logger
-from utils.device_selector import get_device
+from utils.auto_device_selector import get_device
 #from .named_entity_recognition import append_entities_to_header  # 引入自动实体提取函数
 
 
@@ -53,7 +86,10 @@ def split_sentences_chinese(text):
     """
     使用正则表达式按中文标点分句，同时保留句尾标点
     """
-    sentences = re.split(r'(?<=[。！？])', text)
+    # 1. (?<=[。！？])(?![”’"]) : 匹配标点符号，且后面不是引号
+    # 2. (?<=[。！？][”’"])    : 匹配标点符号后紧跟引号的组合
+    pattern = r'(?<=[。！？])(?![”’"])|(?<=[。！？][”’"])'
+    sentences = re.split(pattern, text)
     return [s.strip() for s in sentences if s.strip()]
 
 def split_mixed_sentences(text: str) -> list[str]:
@@ -308,6 +344,9 @@ def process_markdown(md_text: str, max_length: int = 500) -> str:
             logger.warning(f"无法处理的token类型: {token.type}, 内容: {getattr(token, 'content', 'N/A')}")
             i += 1
 
+    # 循环结束后，将剩余的内容写入结果
+    _flush_content(result, current_content, title_stack, max_length)
+
     if result and result[-1] == '-' * 10:
         result.pop()
     return '\n'.join(result)
@@ -317,10 +356,10 @@ def process_markdown(md_text: str, max_length: int = 500) -> str:
 # 测试代码
 if __name__ == "__main__":
     # 使用cuda:3设备进行推理
-    os.environ['CUDA_VISIBLE_DEVICES'] = '3'
-    os.environ['DEFAULT_CUDA_DEVICE'] = 'cuda:3'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    os.environ['DEFAULT_CUDA_DEVICE'] = 'cuda:0'
     os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
-    with open("tests/test_resource/dqfd_1.md", 'r', encoding='utf-8') as f:
+    with open("tests/test_resource/test.md", 'r', encoding='utf-8') as f:
         md_text = f.read()
     processed_md = process_markdown(md_text, max_length=500) 
     out_file = "tests/test_resource/processed_test.md"

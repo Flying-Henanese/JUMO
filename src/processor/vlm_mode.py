@@ -1,3 +1,37 @@
+"""
+VLM-based PDF Processor
+=======================
+
+This module defines the `PDFProcessor` class, which orchestrates the processing of PDF documents
+(and other formats converted to PDF) using a Vision-Language Model (VLM) backend.
+
+Workflow:
+---------
+1.  **Input Handling**:
+    -   Downloads the source file from MinIO.
+    -   Converts non-PDF formats (Images, Word, Excel) to PDF.
+    -   Validates file extensions against allowed types.
+
+2.  **VLM Analysis (`doc_analyze`)**:
+    -   Sends the PDF content to the MinerU VLM backend (via HTTP) for layout analysis and OCR.
+    -   Configures processing parameters (formula/table recognition, OCR language) based on task settings.
+    -   Generates intermediate JSON (`middle_json`) containing detailed document structure.
+
+3.  **Content Generation**:
+    -   Extracts images and uploads them to MinIO.
+    -   Generates Markdown content (`vlm_union_make`).
+    -   Performs post-processing on Markdown (semantic splitting, header enhancement).
+
+4.  **Result Storage**:
+    -   Uploads all artifacts (Markdown, JSON, Images) to the output MinIO bucket.
+    -   Updates the task status and output info in the database.
+
+Dependencies:
+-------------
+-   `mineru` backend for core PDF analysis.
+-   `minio_tool` for file storage operations.
+-   `TaskRepository` for database updates.
+"""
 import os
 import tempfile
 import json
@@ -22,6 +56,7 @@ from data.operation import TaskRepository
 from processor.markdown_splitter import process_markdown
 from processor.converters.file_converters import office_bytes_to_pdf_bytes
 from PIL import Image
+from processor.converters.markdown_math_stripper import strip_latex_from_json_structure,strip_latex_from_markdown
 
 class PDFProcessor:
     def __init__(self, minio_tool: MinioConnection, task_repository: TaskRepository):
@@ -71,11 +106,10 @@ class PDFProcessor:
 
                 os.environ['MINERU_VLM_FORMULA_ENABLE'] = 'true' if bool(current_task.formula_enabled) else 'false'
                 os.environ['MINERU_VLM_TABLE_ENABLE'] = 'true' if bool(current_task.table_enabled) else 'false'
-                os.environ['MINERU_FORMULA_ENABLE'] = os.environ['MINERU_VLM_FORMULA_ENABLE']
-                os.environ['MINERU_TABLE_ENABLE'] = os.environ['MINERU_VLM_TABLE_ENABLE']
+                os.environ['MINERU_FORMULA_ENABLE'] = 'true' if bool(current_task.formula_enabled) else 'false'
+                os.environ['MINERU_TABLE_ENABLE'] = 'true' if bool(current_task.table_enabled) else 'false'
                 os.environ['MINERU_VLM_OCR_LANG'] = str(current_task.ocr_lang)
                 server_url = os.getenv("VLLM_SERVER_URL", "http://localhost:8000/v1")
-                
                 # 注意：OCR语言通过函数参数传递，不是环境变量
                 middle_json, infer_result = doc_analyze(                                     # ★
                     pdf_bytes,
@@ -105,6 +139,8 @@ class PDFProcessor:
                               f"{current_task.task_id}/images")  
                 
                 clean_md = md_str.encode("utf-8", "surrogatepass").decode("utf-8", "ignore")
+                # if not current_task.formula_enabled:
+                #     clean_md = strip_latex_from_markdown(clean_md)
                 self.minio_tool.upload_file_by_bytes(
                     bucket_name=current_task.output_bucket,
                     object_name=f"{current_task.task_id}/{name_without_ext}.md",
@@ -130,6 +166,10 @@ class PDFProcessor:
                 )
 
                 # middle_json 内容
+                # 如果禁用了公式识别，从JSON结构中移除所有LaTeX表达式
+                # if not current_task.formula_enabled:
+                #     middle_json = strip_latex_from_json_structure(middle_json)
+                
                 middle_json_content = json.dumps(middle_json, ensure_ascii=False, indent=4).encode("utf-8","surrogatepass").decode("utf-8","ignore")
                 self.minio_tool.upload_file_by_bytes(
                     bucket_name=current_task.output_bucket,

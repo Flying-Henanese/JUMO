@@ -1,3 +1,17 @@
+"""
+Database Operations
+===================
+
+This module encapsulates all database interactions through the `TaskRepository` class.
+It handles the creation, retrieval, and updating of Task records using SQLAlchemy sessions.
+It also manages the database connection lifecycle.
+
+Key Features:
+-------------
+-   **Session Management**: Automatically handles session creation, commit, rollback, and closure.
+-   **CRUD Operations**: Provides methods to create, read, and update tasks.
+-   **Logging**: Integrates with `loguru` and custom decorators to log operation time and errors.
+"""
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 from data.model import Task
@@ -15,7 +29,14 @@ T = TypeVar('T')
 
 class TaskRepository:
     """
-    定义对Task表(任务信息表)的所有操作
+    Repository for Task Operations
+    ------------------------------
+    Manages all database interactions related to the `Task` model.
+    It acts as an abstraction layer between the business logic and the database.
+
+    Attributes:
+        engine (Engine): SQLAlchemy Engine instance.
+        SessionLocal (sessionmaker): Factory for creating new database sessions.
     """
     def __init__(self, db_url: str = None):
         """
