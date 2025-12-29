@@ -2,6 +2,7 @@ mineru-venv/
 .venv/
 models/
 logs/
+tests/test_resource/
 *.pyc
 .vscode/
 database/
