@@ -81,8 +81,9 @@ def _init_services(**kwargs):
             import mineru.backend.pipeline.para_split as para_split
             para_split.__merge_2_list_blocks = safe_merge_2_list_blocks
             para_split.__merge_2_text_blocks = safe_merge_2_text_blocks
-            from processor.converters.table_to_markdown import patch_batchanalyze_output_to_markdown
-            patch_batchanalyze_output_to_markdown()
+            # 暂时先不使用这个把html表格转markdown的补丁
+            # from processor.converters.table_to_markdown import patch_batchanalyze_output_to_markdown
+            # patch_batchanalyze_output_to_markdown()
         except Exception:
             pass
         globals()["_patched"] = True
