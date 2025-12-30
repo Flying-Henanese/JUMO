@@ -44,6 +44,7 @@ from nltk.tokenize import sent_tokenize
 import threading
 from loguru import logger
 from utils.auto_device_selector import get_device
+from processor.converters.table_to_markdown import html_table_to_key_value
 #from .named_entity_recognition import append_entities_to_header  # 引入自动实体提取函数
 
 
@@ -189,7 +190,54 @@ def _infer_heading_level(title: str) -> int:
 def _get_title_path(stack: list[str]) -> str:
     return '|'.join([t for t in stack if t])
 
-def _flush_content(result, current_content, title_stack, max_length, special_element=None) -> None:
+def split_text_by_length_and_newline(text: str, max_length: int) -> list[str]:
+    """
+    优先按换行符切分，如果单行超过max_length再进行语义切分。
+    尽可能合并短行以填充max_length。
+    """
+    lines = text.split('\n')
+    chunks = []
+    current_chunk_lines = []
+    current_chunk_len = 0
+    
+    for line in lines:
+        line_len = len(line)
+        
+        # 计算如果加入当前行后的总长度（包含换行符）
+        # 如果 current_chunk_lines 不为空，则需要加一个换行符，长度+1
+        added_len = line_len + (1 if current_chunk_lines else 0)
+        
+        # 1. 如果单行本身就超过 max_length
+        if line_len > max_length:
+            # 先把当前积累的内容flush掉
+            if current_chunk_lines:
+                chunks.append('\n'.join(current_chunk_lines))
+                current_chunk_lines = []
+                current_chunk_len = 0
+            
+            # 对超长行进行语义切分
+            sub_chunks = semantic_chunking_with_auto_clusters(line, max_chunk_size=max_length)
+            chunks.extend(sub_chunks)
+            
+        # 2. 如果加上当前行会超过 max_length
+        elif current_chunk_len + added_len > max_length:
+            chunks.append('\n'.join(current_chunk_lines))
+            current_chunk_lines = [line]
+            current_chunk_len = line_len
+            
+        # 3. 否则加入当前块
+        else:
+            current_chunk_lines.append(line)
+            current_chunk_len += added_len
+            
+    # 处理最后剩余的内容
+    if current_chunk_lines:
+        chunks.append('\n'.join(current_chunk_lines))
+        
+    return chunks
+
+
+def _flush_content(result, current_content, title_stack, max_length, special_element=None, allow_split=False) -> None:
     if not current_content:
         return
     content = '\n'.join(current_content).strip()
@@ -198,17 +246,30 @@ def _flush_content(result, current_content, title_stack, max_length, special_ele
         return
     level = next((i + 1 for i in range(5, -1, -1) if title_stack[i]), 1)
     title_path = _get_title_path(title_stack)
-    if special_element:
+    
+    if special_element and not allow_split:
         header = f"{'#' * level} {title_path}|{special_element}" if title_path else f"{'#' * level} {special_element}"
         result.extend([header, content, '-' * 10])
     else:
+        # 如果允许切分（无论是普通文本还是特殊的allow_split元素）
         if len(content) > max_length:
             chunks = semantic_chunking_with_auto_clusters(content, max_chunk_size=max_length)
             for idx, chunk in enumerate(chunks, 1):
-                header = f"{'#' * level} {title_path}|Part {idx}" if title_path else f"{'#' * level} Part {idx}"
+                # 构建基础标题
+                base_header = f"{'#' * level} {title_path}" if title_path else f"{'#' * level}"
+                # 如果有special_element，加到中间
+                if special_element:
+                    header = f"{base_header}|{special_element}|Part {idx}"
+                else:
+                    header = f"{base_header}|Part {idx}"
                 result.extend([header, chunk, '-' * 10])
         else:
-            header = f"{'#' * level} {title_path}" if title_path else f"{'#' * level}"
+            base_header = f"{'#' * level} {title_path}" if title_path else f"{'#' * level}"
+            if special_element:
+                header = f"{base_header}|{special_element}"
+            else:
+                header = base_header
+            
             if header:
                 result.append(header)
                 result.append("")
@@ -327,8 +388,28 @@ def process_markdown(md_text: str, max_length: int = 500) -> str:
             continue
         elif token.type == 'html_block':
             _flush_content(result, current_content, title_stack, max_length)
-            current_content.append(token.content.strip())
-            _flush_content(result, current_content, title_stack, max_length, special_element=token.type)
+            content = token.content.strip()
+            # 尝试检测是否为表格，并转换为KV格式
+            # 如果转换成功，则将其标记为Table KV，并允许后续按行切分
+            is_converted_table = False
+            if '<table' in content.lower():
+                try:
+                    kv_list = html_table_to_key_value(content)
+                    if kv_list:
+                        # 将KV列表转换为Markdown列表格式的字符串
+                        # 这样既能利用_flush_content的换行切分，又能保持视觉上的可读性
+                        content = '\n'.join([f"- {item}" for item in kv_list])
+                        is_converted_table = True
+                except Exception as e:
+                    logger.warning(f"HTML表格转KV失败: {e}")
+            
+            current_content.append(content)
+            # 在这里把表格内容按行做切分，以防表格内容过长
+
+            if is_converted_table:
+                _flush_content(result, current_content, title_stack, max_length, special_element='Table KV', allow_split=True)
+            else:
+                _flush_content(result, current_content, title_stack, max_length, special_element=token.type)
             i += 1
             continue
         elif token.type in ['list_item_close', 'ordered_list_close', 'bullet_list_close', 'list_item_open']:
