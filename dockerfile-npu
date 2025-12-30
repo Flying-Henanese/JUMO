@@ -1,0 +1,94 @@
+FROM quay.m.daocloud.io/ascend/vllm-ascend:v0.11.0rc2
+
+# 非交互式安装软件包，用于构建过程中避免用户交互
+ENV DEBIAN_FRONTEND=noninteractive
+# 禁用python的缓冲输出，避免在容器中输出时出现延迟
+ENV PYTHONUNBUFFERED=1
+
+# 替换 APT 源为阿里云镜像, 加速构建过程
+# 注意：Ascend 镜像可能使用 ubuntu-ports (ARM64)，这里添加 ports 源支持
+RUN sed -i 's/archive.ubuntu.com/mirrors.aliyun.com/g' /etc/apt/sources.list \
+    && sed -i 's/security.ubuntu.com/mirrors.aliyun.com/g' /etc/apt/sources.list \
+    && sed -i 's/ports.ubuntu.com/mirrors.aliyun.com/g' /etc/apt/sources.list
+
+# 安装系统构建依赖和运行时依赖
+# 移除自定义 Python 安装，直接复用基础镜像的 Python 环境以保留 torch_npu 支持
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    build-essential \
+    rustc \
+    cargo \
+    libssl-dev \
+    pkg-config \
+    curl \
+    fonts-noto-core \
+    fonts-noto-cjk \
+    fontconfig \
+    libgl1 \
+    libglib2.0-0 \
+    libreoffice \
+    language-pack-zh-hans \
+    fonts-wqy-microhei \
+    fonts-wqy-zenhei \
+    libreoffice-l10n-zh-cn \
+    gcc \
+    g++ \
+    && fc-cache -fv \
+    && update-locale LANG=zh_CN.UTF-8 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# 指定工作目录为/app，这是一个常规操作
+WORKDIR /app
+
+# 复制 Poetry 配置文件到工作目录
+# 准备依赖的安装工作
+COPY pyproject.toml poetry.lock ./
+
+# 配置 uv 使用阿里云镜像源，加速依赖安装过程
+ENV UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+
+# 安装 Poetry 并导出 requirements.txt，然后使用 uv 加速安装
+# 关键修改：
+# 1. 使用系统 pip (基础镜像环境)
+# 2. 从 requirements.txt 中剔除 torch 和 vllm，防止覆盖基础镜像中的 NPU 定制版本
+RUN pip install --no-cache-dir uv poetry poetry-plugin-export -i https://mirrors.aliyun.com/pypi/simple/
+RUN poetry export --without-hashes --only main --format=requirements.txt > requirements.txt
+RUN sed -i '/torch/d' requirements.txt
+RUN sed -i '/vllm/d' requirements.txt
+RUN uv pip install --system --no-cache-dir -r requirements.txt
+
+# 将虚拟环境 bin 目录加入 PATH (如果是系统环境，通常不需要这一步，但保留以防万一)
+# ENV PATH="/app/.venv/bin:$PATH"
+
+# 复制项目代码
+COPY . .
+
+# 赋予脚本可执行权限
+RUN chmod +x manage_services.sh src/celery_worker/*.sh *.sh
+
+# 设置环境变量默认值
+# 设置这个环境变量，让mineru从modelscope获取模型
+ENV MINERU_MODEL_SOURCE=modelscope
+# 让 vLLM 也使用 ModelScope 下载/加载模型(其实在vLLM的启动脚本中已经默认开启了，这里双保险)
+ENV VLLM_USE_MODELSCOPE=True
+# 从huggingface镜像站获取模型(当前整个项目中应该只有sentencetransformer模型会从huggingface获取)
+ENV HF_ENDPOINT=https://hf-mirror.com
+# 指定API服务的端口号，后续会传入fastapi服务中
+ENV API_SERVICE_PORT=5116
+# 暴露端口
+EXPOSE ${API_SERVICE_PORT} 30000
+
+# 设置 Python 和 Celery 的执行路径 (使用系统默认路径)
+ENV PYTHON_PATH=python
+ENV CELERY_PATH=celery
+
+# 将 src 目录加入 PYTHONPATH，确保 Python 能正确解析包结构
+ENV PYTHONPATH=/app/src
+
+
+# 声明挂载点，以便在运行时挂载宿主机缓存目录
+VOLUME ["/root/.cache/huggingface", "/root/.cache/modelscope", "/root/.cache/vllm", "/root/nltk_data"]
+
+# 启动命令
+CMD ["bash", "manage_services.sh", "start"]
