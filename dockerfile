@@ -63,7 +63,7 @@ ENV UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
 # 还有一个点就是这里让poetry只输出main依赖，避免安装开发过程中使用的ruff和black等工具（这些工具都是开发时使用的，不是运行时依赖）
 RUN python3.12 -m pip install --no-cache-dir uv poetry poetry-plugin-export -i https://mirrors.aliyun.com/pypi/simple/
 
-# 先去掉这一步，直接在宿主机poetry lock就好了 
+# 暂时不需要这个了
 # RUN poetry lock --no-interaction
 
 RUN poetry export --without-hashes --only main --format=requirements.txt > requirements.txt
