@@ -45,6 +45,7 @@ import threading
 from loguru import logger
 from utils.auto_device_selector import get_device
 from processor.converters.table_to_markdown import html_table_to_key_value
+from processor.nlp_inference.factory import InferenceFactory
 #from .named_entity_recognition import append_entities_to_header  # 引入自动实体提取函数
 
 
@@ -60,28 +61,6 @@ except LookupError:
 在这个模块中会把生成的中间markdown进行切分处理，使得其
 可以在知识库应用中被合理地向量化
 """
-class SingletonSentenceTransformer:
-    """
-    使用单例模式确保全程只创建一个 SentenceTransformer 实例。
-    """
-    _instance = None
-    _lock = threading.Lock()
-
-    def __new__(cls, model_id='BAAI/bge-small-zh-v1.5', mirror=True):
-        if cls._instance is None:
-            with cls._lock:
-                target_device = get_device()
-                logger.info(f"正在通过{os.getenv('HF_ENDPOINT')}加载模型：{model_id}（mirror={mirror}）, device={target_device}")
-                cls._instance = SentenceTransformer(model_id, device=target_device)
-                logger.info("模型加载完成。")
-        return cls._instance
-
-
-def get_bge_sentence_transformer_singleton(model_id='BAAI/bge-small-zh-v1.5', mirror=True):
-    """
-    获取全局唯一的 SentenceTransformer 实例。
-    """
-    return SingletonSentenceTransformer(model_id=model_id, mirror=mirror)
 
 def split_sentences_chinese(text):
     """
@@ -150,8 +129,8 @@ def semantic_chunking_with_auto_clusters(text, max_chunk_size=500, model_id="BAA
         return [text.strip()]
 
     # Step 2: 向量化
-    model = get_bge_sentence_transformer_singleton(model_id)
-    embeddings = model.encode(sentences)
+    client = InferenceFactory.get_embedding_client()
+    embeddings = client.encode(sentences)
 
     # Step 3: 自动选择最佳簇数
     # 这里使用最简单无脑的方法, 簇数 = 句子数//最大段落长度+1
