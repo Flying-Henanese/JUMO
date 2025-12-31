@@ -62,7 +62,7 @@ def _spawn_instance(
     env_hint = ",".join([f"{k}={v}" for k, v in get_env_vars_for_device(device_id).items()]) or "none"
     logger.info(f"Starting vLLM instance: device_id={device_id}, port={port}, env={env_hint}")
 
-    log_file = log_dir / f"vllm_dev{device_id.replace(',', '_')}_port{port}.log"
+    log_file = log_dir / f"vllm_dev_{device_id.replace(',', '_')}.log"
     log_fp = open(log_file, "ab", buffering=0)
 
     cmd = _build_vllm_cmd(python_bin, port)
