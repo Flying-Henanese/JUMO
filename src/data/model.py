@@ -67,6 +67,8 @@ class Task(Base):
     ocr_enabled = Column(Integer, nullable=False, default=0)
     # 表格识别是否开启
     table_enabled = Column(Integer, nullable=False, default=0)
+    # 行内公式识别是否开启
+    inline_formula_enabled = Column(Integer, nullable=False, default=1)
     # ocr识别语言
     ocr_lang = Column(String)
     # 输出信息,json格式
@@ -79,7 +81,7 @@ class Task(Base):
     status = Column(String, nullable=False, default=TaskStatus.QUEUED)
 
     def __repr__(self):
-        return f'''Task(id={self.id}, task_id={self.task_id}, bucket_name={self.bucket_name}, object_key={self.object_key}, output_bucket={self.output_bucket}, ocr_enabled={self.ocr_enabled}, table_enabled={self.table_enabled}, ocr_lang={self.ocr_lang}, output_info={self.output_info}, create_time={self.create_time}, finish_time={self.finish_time})'''
+        return f'''Task(id={self.id}, task_id={self.task_id}, bucket_name={self.bucket_name}, object_key={self.object_key}, output_bucket={self.output_bucket}, ocr_enabled={self.ocr_enabled}, table_enabled={self.table_enabled}, inline_formula_enabled={self.inline_formula_enabled}, ocr_lang={self.ocr_lang}, output_info={self.output_info}, create_time={self.create_time}, finish_time={self.finish_time})'''
 
 class TaskResponse(BaseModel):
     '''响应模型,用于封装任务数据'''
