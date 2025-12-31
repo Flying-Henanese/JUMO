@@ -53,6 +53,8 @@ ENV UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
 # 1. 使用系统 pip (基础镜像环境)
 # 2. 从 requirements.txt 中剔除 torch 和 vllm，防止覆盖基础镜像中的 NPU 定制版本
 RUN pip install --no-cache-dir uv poetry poetry-plugin-export -i https://mirrors.aliyun.com/pypi/simple/
+# 确定所有依赖的精确版本，确保在Ascend NPU环境中能正常运行
+RUN poetry lock --no-interaction
 RUN poetry export --without-hashes --only main --format=requirements.txt > requirements.txt
 RUN sed -i '/torch/d' requirements.txt
 RUN sed -i '/vllm/d' requirements.txt

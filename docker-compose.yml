@@ -11,7 +11,7 @@ services:
       - "${API_SERVICE_PORT:-5116}:${API_SERVICE_PORT:-5116}"   
     environment:
       - API_SERVICE_PORT=${API_SERVICE_PORT:-5116}
-      - PYTHON_PATH=${PYTHON_PATH}
+      - PYTHON_PATH=${PYTHON_PATH:-/app/.venv/bin/python}
       - PYTHONPATH=/app/src
       - REDIS_HOST=redis # Redis 配置（通过docker-compose内的服务名redis访问）
       - REDIS_PORT=${REDIS_PORT:-6379}
@@ -58,7 +58,7 @@ services:
 
     # 直接以前台方式运行 API 服务（而不是 nohup 后台）
     command: >
-      bash -lc "$PYTHON_PATH src/mineru_service.py"
+      bash -lc "/app/.venv/bin/python src/mineru_service.py"
 
   # Celery Worker 容器
   mineru-worker:
@@ -69,7 +69,7 @@ services:
     environment:
       # 模型与下载源配置
       - MODEL=${MODEL:-opendatalab/MinerU2.5-2509-1.2B}
-      - PYTHON_PATH=${PYTHON_PATH}
+      - PYTHON_PATH=${PYTHON_PATH:-/app/.venv/bin/python}
       - PYTHONPATH=/app/src
       - HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
       - MINERU_MODEL_SOURCE=${MINERU_MODEL_SOURCE:-modelscope}
@@ -139,7 +139,7 @@ services:
 
     # 使用与宿主机相同的主程序入口，在容器中以前台方式运行
     command: >
-      bash -lc "$PYTHON_PATH src/celery_worker/pdf_process_worker.py >> /app/logs/mineru-worker.log"
+      bash -lc "/app/.venv/bin/python src/celery_worker/pdf_process_worker.py >> /app/logs/mineru-worker.log"
 
   # vLLM 推理后端容器
   vllm:
@@ -149,7 +149,7 @@ services:
 
     environment:
       - MODEL=${MODEL:-opendatalab/MinerU2.5-2509-1.2B}
-      - PYTHON_PATH=${PYTHON_PATH}
+      - PYTHON_PATH=${PYTHON_PATH:-/app/.venv/bin/python}
       - PYTHONPATH=/app/src
       - HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
       - MINERU_MODEL_SOURCE=${MINERU_MODEL_SOURCE:-modelscope}
@@ -195,7 +195,7 @@ services:
 
     # 启动 vLLM 后端：由 Python launcher 负责按 INFERENCE_DEVICES 拉起多个实例并监督进程
     command: >
-      bash -lc "$PYTHON_PATH -u src/celery_worker/vllm_backend_start.py"
+      bash -lc "/app/.venv/bin/python -u src/celery_worker/vllm_backend_start.py"
 
   # Redis 容器，其他服务通过服务名 redis 访问
   redis:

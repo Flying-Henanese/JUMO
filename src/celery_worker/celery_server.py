@@ -64,6 +64,10 @@ celery_app.conf.update(
     worker_send_task_events=False,
     broker_heartbeat=10,
     broker_transport_options={"health_check_interval": 30},
+    # 强制每个 worker 进程在执行完 1 个任务后重启
+    # 这可以解决 mineru_vl_utils 中 MinerUClient 复用导致的 "Event loop is closed" 错误
+    # 由于模型主要运行在 vLLM 服务中，worker 进程重启开销很小
+    worker_max_tasks_per_child=1,
 )
 
 # 默认队列名称的单一来源，供生产者和消费者参考
