@@ -14,7 +14,7 @@ from loguru import logger
 from .interfaces import EmbeddingClient, NERClient
 from ..named_entity_recognition import Entity
 
-DEVICE_MODE = os.getenv("DEFAULT_CUDA_DEVICE", "mps")
+DEVICE_MODE = os.getenv("DEFAULT_CUDA_DEVICE", "cuda" if torch.cuda.is_available() else "cpu")
 
 # 预设好NER模型的名称
 MODEL_NAME = "uer/roberta-base-finetuned-cluener2020-chinese"
@@ -98,7 +98,7 @@ class LocalNERClient(NERClient):
                     entity_dict = {
                         'entity_group': entity_data.get('entity_group', 'UNKNOWN'),
                         'entity': clean_text,
-                        'score': round(entity_data.get('score', 0), 4),
+                        'score': float(round(entity_data.get('score', 0), 4)),
                         'start': left,
                         'end': right
                     }
@@ -228,8 +228,9 @@ class LocalEmbeddingClient(EmbeddingClient):
         if LocalEmbeddingClient._model_instance is None:
             with LocalEmbeddingClient._lock:
                 if LocalEmbeddingClient._model_instance is None:
-                    print(f"正在通过{os.getenv('HF_ENDPOINT')}加载模型：{model_id}（mirror={mirror}）,device={device}")
-                    LocalEmbeddingClient._model_instance = SentenceTransformer(model_id, device=f'{DEVICE_MODE}')
+                    print(f"正在通过{os.getenv('HF_ENDPOINT')}加载模型：{model_id}（mirror={mirror}）")
+                    # 使用默认设备，避免在Ray环境中指定错误的cuda index
+                    LocalEmbeddingClient._model_instance = SentenceTransformer(model_id)
                     print("模型加载完成。")
         self.model = LocalEmbeddingClient._model_instance
 

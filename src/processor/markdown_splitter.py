@@ -46,7 +46,7 @@ from loguru import logger
 from utils.auto_device_selector import get_device
 from processor.converters.table_to_markdown import html_table_to_key_value
 from processor.nlp_inference.factory import InferenceFactory
-#from .named_entity_recognition import append_entities_to_header  # 引入自动实体提取函数
+from .named_entity_recognition import append_entities_to_header  # 引入自动实体提取函数
 
 
 # 确保 punkt_tab 可用
@@ -228,6 +228,7 @@ def _flush_content(result, current_content, title_stack, max_length, special_ele
     
     if special_element and not allow_split:
         header = f"{'#' * level} {title_path}|{special_element}" if title_path else f"{'#' * level} {special_element}"
+        # header = append_entities_to_header(header, content)
         result.extend([header, content, '-' * 10])
     else:
         # 如果允许切分（无论是普通文本还是特殊的allow_split元素）
@@ -241,6 +242,7 @@ def _flush_content(result, current_content, title_stack, max_length, special_ele
                     header = f"{base_header}|{special_element}|Part {idx}"
                 else:
                     header = f"{base_header}|Part {idx}"
+                header = append_entities_to_header(header, chunk)
                 result.extend([header, chunk, '-' * 10])
         else:
             base_header = f"{'#' * level} {title_path}" if title_path else f"{'#' * level}"
@@ -248,6 +250,8 @@ def _flush_content(result, current_content, title_stack, max_length, special_ele
                 header = f"{base_header}|{special_element}"
             else:
                 header = base_header
+            
+            header = append_entities_to_header(header, content)
             
             if header:
                 result.append(header)

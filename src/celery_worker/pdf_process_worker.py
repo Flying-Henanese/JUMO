@@ -160,7 +160,8 @@ if __name__ == "__main__":
         env["WORKER_QUEUE_NAME"] = q
         base_endpoint = os.getenv("VLLM_BASE_ENDPOINT", "localhost")
         base_port = int(os.getenv("VLLM_BASE_PORT", "8000"))
-        env["VLLM_SERVER_URL"] = f"http://{base_endpoint}:{base_port + idx}/v1"
+        # Ray Serve provides a unified ingress, so all workers share the same VLLM URL
+        env["VLLM_SERVER_URL"] = f"http://{base_endpoint}:{base_port}/v1"
         if d is not None:
             env["WORKER_GPU_DEVICE"] = str(d)
             # 使用 auto_device_selector 获取正确的环境变量（兼容 CUDA 和 NPU）

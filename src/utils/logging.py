@@ -4,6 +4,7 @@ import sys
 
 def setup_logger(
     log_dir="logs",
+    log_filename="app_{time:YYYY-MM-DD}.log",
     level="INFO",
     rotation="1 day",       # 每天新文件
     retention="7 days",     # 日志保留7天
@@ -18,7 +19,7 @@ def setup_logger(
 
     # 文件 sink
     logger.add(
-        os.path.join(log_dir, "app_{time:YYYY-MM-DD}.log"),
+        os.path.join(log_dir, log_filename),
         level=level,
         rotation=rotation,
         retention=retention,

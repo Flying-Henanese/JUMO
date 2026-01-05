@@ -1,0 +1,11 @@
+# This file is generated to run multiple Ray Serve applications together.
+# Usage: serve run src/serve/nlp_serve_config.yaml
+
+applications:
+  - name: ner_app
+    import_path: src.serve.nlp_ray:ner_app
+    route_prefix: /ner
+
+  - name: embedding_app
+    import_path: src.serve.nlp_ray:embedding_app
+    route_prefix: /emb

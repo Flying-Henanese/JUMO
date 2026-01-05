@@ -96,6 +96,11 @@ services:
 
       # GPU 配置（根据实际 GPU 调整）
       - INFERENCE_DEVICES=${INFERENCE_DEVICES:-0}
+      
+      # NLP 服务配置
+      - NLP_INFERENCE_MODE=ray
+      - EMBEDDING_SERVICE_URL=http://mineru-nlp:8000/emb/encode
+      - NER_SERVICE_URL=http://mineru-nlp:8000/ner/extract
 
     volumes:
       # 挂载日志目录，实现日志持久化
@@ -154,6 +159,7 @@ services:
       - HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
       - MINERU_MODEL_SOURCE=${MINERU_MODEL_SOURCE:-modelscope}
       - INFERENCE_DEVICES=${INFERENCE_DEVICES:-0}
+      - VLLM_USE_MODELSCOPE=${VLLM_USE_MODELSCOPE:-true}
       - VLLM_RPC_TIMEOUT=${VLLM_RPC_TIMEOUT:-120000}
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       # 用于健康检查的端口列表，逗号分隔，默认只检查 8000
@@ -181,21 +187,74 @@ services:
       test:
         - CMD-SHELL
         - >
-          if [ -z "$${INFERENCE_DEVICES}" ]; then echo "no INFERENCE_DEVICES"; exit 1; fi;
-          i=0;
-          for g in $$(echo "$${INFERENCE_DEVICES}" | tr ',' ' '); do
-            port=$$((8000 + i));
-            curl -fsS "http://localhost:$$port/v1/models" >/dev/null || exit 1;
-            i=$$((i+1));
-          done
+          curl -fsS "http://localhost:8000/v1/models" >/dev/null || exit 1
       interval: 20s
       timeout: 5s
       retries: 5
       start_period: 90s
 
-    # 启动 vLLM 后端：由 Python launcher 负责按 INFERENCE_DEVICES 拉起多个实例并监督进程
+    # 启动 Ray Serve 集群并部署 VLLM 服务
+    # --head: 启动头节点
+    # --dashboard-host: 允许外部访问 dashboard (可选，默认 localhost)
+    # serve run: 启动应用
     command: >
-      bash -lc "$PYTHON_PATH -u src/celery_worker/vllm_backend_start.py"
+      bash -lc "
+      ray start --head --dashboard-host=0.0.0.0 --port=6379 --disable-usage-stats &&
+      serve start --http-host 0.0.0.0 --http-port 8000 &&
+      serve run src.serve.vllm_ray:deployment
+      "
+
+  # NLP Ray Serve 容器 (NER + Embedding)
+  mineru-nlp:
+    image: mineru-service:latest
+    container_name: mineru-nlp
+    restart: unless-stopped
+    environment:
+      - PYTHON_PATH=${PYTHON_PATH}
+      - PYTHONPATH=/app/src
+      - HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
+      - INFERENCE_DEVICES=${INFERENCE_DEVICES:-0}
+      - NLP_GPU_PER_INSTANCE=${NLP_GPU_PER_INSTANCE:-0.1}
+      # 显式指定 NLP 模式为 Ray，确保客户端调用远程接口
+      - NLP_INFERENCE_MODE=ray
+      - EMBEDDING_SERVICE_URL=http://mineru-nlp:8000/emb/encode
+      - NER_SERVICE_URL=http://mineru-nlp:8000/ner/extract
+      # 增加 Ray Serve 队列长度和响应超时配置
+      - RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S=10
+      
+    volumes:
+      - ./logs:/app/logs
+      - ./src:/app/src
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      - ${HOME}/.cache/modelscope:/root/.cache/modelscope
+      - ${HOME}/nltk_data:/root/nltk_data
+      
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    
+    ipc: host
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          curl -fsS "http://localhost:8000/-/routes" | grep -q "/ner" && 
+          curl -fsS "http://localhost:8000/-/routes" | grep -q "/emb" || exit 1
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+    command: >
+      bash -lc "
+      ray start --head --dashboard-host=0.0.0.0 --port=6379 --disable-usage-stats &&
+      serve run src/serve/nlp_serve_config.yaml
+      "
 
   # Redis 容器，其他服务通过服务名 redis 访问
   redis:

@@ -45,7 +45,7 @@ from minio.error import S3Error
 from mineru.cli.common import convert_pdf_bytes_to_bytes_by_pypdfium2, prepare_env
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.enum_class import MakeMode
-from mineru.backend.hybrid.hybrid_analyze import doc_analyze
+from mineru.backend.vlm.vlm_analyze import doc_analyze
 from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
 
 from data.model import Task
@@ -111,7 +111,7 @@ class PDFProcessor:
                 os.environ['MINERU_VLM_OCR_LANG'] = str(current_task.ocr_lang)
                 server_url = os.getenv("VLLM_SERVER_URL", "http://localhost:8000/v1")
                 # 注意：OCR语言通过函数参数传递，不是环境变量
-                middle_json, infer_result, _ = doc_analyze(
+                middle_json, infer_result = doc_analyze(
                     pdf_bytes,
                     image_writer=image_writer,
                     backend="http-client",

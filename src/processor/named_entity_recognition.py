@@ -38,7 +38,7 @@ import threading
 from collections import OrderedDict
 from typing import List, Dict, Any, Optional
 from loguru import logger
-from processor.nlp_inference.factory import InferenceFactory
+# from processor.nlp_inference.factory import InferenceFactory # Moved inside function to avoid circular import
 
 # region
 class Entity:
@@ -250,7 +250,7 @@ class Entity:
 def extract_entities_auto(text: str, confidence_threshold: float = 0.5, 
                          return_objects: bool = False, entity_num: int = 5) -> List[Dict[str, Any]]:
     """
-    自动选择模型进行实体识别
+    自动选择模型进行实体识别（支持本地或远程调用，取决于配置）
     
     Args:
         text (str): 输入文本
@@ -266,8 +266,17 @@ def extract_entities_auto(text: str, confidence_threshold: float = 0.5,
         return []
 
     try:
+        # 使用延迟导入以避免与 local_impl (引用了 Entity) 产生循环依赖
+        from processor.nlp_inference.factory import InferenceFactory
+        
         client = InferenceFactory.get_ner_client()
-        return client.extract_entities(text, confidence_threshold, return_objects, entity_num)
+        return client.extract_entities(
+            text=text,
+            confidence_threshold=confidence_threshold,
+            return_objects=return_objects,
+            entity_num=entity_num
+        )
+
     except Exception as e:
         logger.error(f"实体识别失败: {e}")
         return []

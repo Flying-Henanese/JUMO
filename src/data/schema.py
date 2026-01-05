@@ -43,6 +43,7 @@ class TaskBase(BaseModel):
     formula_enabled: int = 0
     ocr_enabled: int = 0
     table_enabled: int = 0
+    inline_formula_enabled: int = 1
     ocr_lang: Optional[str] = None
     output_info: Optional[str] = ''
     status: TaskStatus = TaskStatus.QUEUED
