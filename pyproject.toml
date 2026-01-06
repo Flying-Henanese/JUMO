@@ -91,7 +91,6 @@ dependencies = [
     "stringzilla (>=3.12.6,<4.0.0)",
     "vllm (>=0.11.0,<0.12.0)",
     "ray[serve] (>=2.10.0,<3.0.0)",
-    "litserve (>=0.2.15,<0.3.0)",
     "celery (>=5.5.3,<6.0.0)",
 ]
 # 已从主依赖中移除：build/cachecontrol/cleo/crashtest/distlib/dulwich/findpython/importlib-metadata/
@@ -148,6 +147,6 @@ name = "aliyun"
 url = "https://mirrors.aliyun.com/pypi/simple/"
 priority = "primary"
 
-
+# 下面的组件安装失败也不影响主程序运行，仅为可选
 [tool.poetry.group.optional.dependencies]
 triton = "^3.3.1"  # GPU/加速相关，可选安装（只有需要 GPU 时才安装）
