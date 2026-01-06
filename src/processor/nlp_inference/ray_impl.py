@@ -1,3 +1,8 @@
+'''
+未使用状态
+这个模块实现了通过 Ray Serve的remote procedure call (RPC) 调用 NER 和 Embedding 服务。
+但是现在没有实际使用，而是和mineru模型一样使用http client方式进行调用
+'''
 from typing import List, Union, Dict, Any
 import numpy as np
 from ray import serve
