@@ -197,8 +197,10 @@ services:
     # --head: 启动头节点
     # --dashboard-host: 允许外部访问 dashboard (可选，默认 localhost)
     # serve run: 启动应用
+    # 注意：这里显式设置 CUDA_VISIBLE_DEVICES，让 Ray 只使用 INFERENCE_DEVICES 指定的 GPU
     command: >
       bash -lc "
+      export CUDA_VISIBLE_DEVICES=\$INFERENCE_DEVICES &&
       ray start --head --dashboard-host=0.0.0.0 --port=6379 --disable-usage-stats &&
       serve start --http-host 0.0.0.0 --http-port 8000 &&
       serve run src.serve.vllm_ray:deployment
