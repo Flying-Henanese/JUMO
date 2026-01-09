@@ -58,17 +58,6 @@ def _init_services(**kwargs):
     if assigned:
         env_vars = get_env_vars_for_device(assigned)
         os.environ.update(env_vars)
-        
-        # 尝试设置 PyTorch 设备（主要是 CUDA 需要显式 set_device，虽然环境变量已经隔离了）
-        try:
-            import torch
-            device_type = get_device_type()
-            if device_type == "cuda" and torch.cuda.is_available():
-                torch.cuda.set_device(0)
-            elif device_type == "npu" and torch.npu.is_available():
-                torch.npu.set_device(0)
-        except Exception:
-            pass
             
     if _repo is None:
         _repo = TaskRepository()
@@ -98,7 +87,7 @@ def _init_services(**kwargs):
     bind=True, 
     # 默认队列：任务若未显式指定 queue，将路由到该队列；生产者可用 send_task(queue=...) 覆盖
     queue=DEFAULT_QUEUE_NAME
-)
+)# 这里如果再创建一个使用@celery_app.task的函数，就会让这个worker有两个函数，但是两者共用一个计算单元
 def process_pdf_celery(self, task_id: str):
     """
     在独立的 Celery worker 进程中执行 PDF 处理任务。

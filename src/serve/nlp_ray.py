@@ -9,12 +9,18 @@ from src.utils.auto_device_selector import get_env_vars_for_device
 
 # Define request models
 class ExtractRequest(BaseModel):
+    '''
+    NER实体识别的请求模型
+    '''
     text: str
     confidence_threshold: float = 0.7
     return_objects: bool = False
     entity_num: int = 5
 
 class EncodeRequest(BaseModel):
+    '''
+    文本嵌入向量计算的请求模型
+    '''
     texts: List[str]
 
 # Define FastAPI apps
