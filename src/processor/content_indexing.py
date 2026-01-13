@@ -51,6 +51,9 @@ class SpanInfo:
     bbox: span的位置信息，[x0, y0, x1, y1]
     """
     def __init__(self, content: str, bbox: List[int]):  # 修改为List[int]
+        # 处理可能存在的转义字符，将 \" 替换为 "
+        if isinstance(content, str):
+            content = content.replace('\\"', '"')
         self.content = content
         self.bbox = bbox
 
