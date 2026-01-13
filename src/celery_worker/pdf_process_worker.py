@@ -58,6 +58,17 @@ def _init_services(**kwargs):
     if assigned:
         env_vars = get_env_vars_for_device(assigned)
         os.environ.update(env_vars)
+        
+        # 尝试设置 PyTorch 设备（主要是 CUDA 需要显式 set_device，虽然环境变量已经隔离了）
+        # try:
+        #     import torch
+        #     device_type = get_device_type()
+        #     if device_type == "cuda" and torch.cuda.is_available():
+        #         torch.cuda.set_device(0)
+        #     elif device_type == "npu" and torch.npu.is_available():
+        #         torch.npu.set_device(0)
+        # except Exception:
+        #     pass
             
     if _repo is None:
         _repo = TaskRepository()
