@@ -56,7 +56,6 @@ from data.operation import TaskRepository
 from processor.markdown_splitter import process_markdown
 from processor.converters.file_converters import office_bytes_to_pdf_bytes
 from PIL import Image
-from processor.converters.markdown_math_stripper import strip_latex_from_json_structure,strip_latex_from_markdown
 
 class PDFProcessor:
     def __init__(self, minio_tool: MinioConnection, task_repository: TaskRepository):
