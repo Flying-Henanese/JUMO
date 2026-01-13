@@ -154,6 +154,8 @@ if __name__ == "__main__":
     procs = []
     for idx, d in enumerate(devices):
         env = os.environ.copy()
+        # 允许以 root 用户运行 Celery（在容器环境中常见）
+        env["C_FORCE_ROOT"] = "1"
         q = os.getenv("WORKER_QUEUE_NAME", DEFAULT_QUEUE_NAME)
         env["WORKER_QUEUE_NAME"] = q
         base_endpoint = os.getenv("VLLM_BASE_ENDPOINT", "localhost")

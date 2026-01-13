@@ -39,6 +39,7 @@ async def drop_pdf(
     ocr_enabled: bool = False,
     table_enabled: bool = False,
     formula_enabled: bool = False,
+    inline_formula_enabled: bool = True,
     ocr_lang: OCRLanguage = OCRLanguage.get_default()
 ):
     """
@@ -80,6 +81,7 @@ async def drop_pdf(
                 ocr_enabled=ocr_enabled,
                 table_enabled=table_enabled,
                 formula_enabled=formula_enabled,
+                inline_formula_enabled=inline_formula_enabled,
                 ocr_lang=ocr_lang.value,
                 output_info='',
                 create_time=datetime.now(),
@@ -115,6 +117,7 @@ async def analyze_pdf(
     ocr_enabled: bool = False,
     table_enabled: bool = False,
     formula_enabled: bool = False,
+    inline_formula_enabled: bool = True,
     ocr_lang: OCRLanguage = OCRLanguage.get_default()
 ):
     """
@@ -136,6 +139,7 @@ async def analyze_pdf(
             ocr_enabled=ocr_enabled,
             table_enabled=table_enabled,
             formula_enabled=formula_enabled,
+            inline_formula_enabled=inline_formula_enabled,
             ocr_lang=ocr_lang.value,
             output_info='',
             create_time=datetime.now(),
@@ -171,6 +175,7 @@ async def upload_and_analyze_pdf(
     ocr_enabled: bool = False,
     table_enabled: bool = False,
     formula_enabled: bool = False,
+    inline_formula_enabled: bool = True,
     ocr_lang: OCRLanguage = OCRLanguage.get_default()
 ):
     """
@@ -208,6 +213,7 @@ async def upload_and_analyze_pdf(
             ocr_enabled=ocr_enabled,
             table_enabled=table_enabled,
             formula_enabled=formula_enabled,
+            inline_formula_enabled=inline_formula_enabled,
             ocr_lang=ocr_lang.value,
             output_info='',
             create_time=datetime.now(),
