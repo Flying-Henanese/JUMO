@@ -9,3 +9,7 @@ applications:
   - name: embedding_app
     import_path: src.serve.nlp_ray:embedding_app
     route_prefix: /emb
+
+  - name: image_rag_app
+    import_path: src.serve.image_processing_ray:image_rag
+    route_prefix: /image
