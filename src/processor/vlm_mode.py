@@ -61,7 +61,6 @@ from data.operation import TaskRepository
 from processor.markdown_splitter import process_markdown
 from processor.converters.file_converters import office_bytes_to_pdf_bytes
 from PIL import Image
-from processor.image_processing.image_rag import ImageRAGMetadata
 
 class PDFProcessor:
     def __init__(self, minio_tool: MinioConnection, task_repository: TaskRepository):
@@ -109,7 +108,9 @@ class PDFProcessor:
                 # 存储文档中所有的图片RAG元数据，使用字典方便通过文件名检索
                 image_rag_metadata_map: dict[str, ImageRAGMetadata] = {}
                 try:
-                    image_rag_handle = serve.get_deployment_handle("image_rag_app", app_name="image_rag_app")
+                    # 注意：app_name 对应 nlp_serve_config.yaml 中的 name
+                    # deployment_name 对应 image_processing_ray.py 中 @serve.deployment 装饰的类名 (默认为类名 ImageRAGDeployment)
+                    image_rag_handle = serve.get_deployment_handle("ImageRAGDeployment", app_name="image_rag_app")
                 except Exception as e:
                     logger.warning(f"Failed to get image_rag_handle: {e}")
                     image_rag_handle = None
@@ -145,13 +146,13 @@ class PDFProcessor:
                                     try:
                                         # 使用 RPC 调用，直接传递 bytes
                                         # 注意：这里为了简单起见使用了同步等待 (ray.get)，如果图片很多可以改为批量异步
-                                        metadata_dict = ray.get(image_rag_handle.process_image.remote(
+                                        metadata_dict = image_rag_handle.process_image.remote(
                                             image=img_bytes,
                                             additional_prompt="<CAPTION>" # 同时获取 Object Detection 结果作为标签来源
-                                        ))
+                                        ).result()
                                         # 将字典转换回对象 (如果 process_image 返回的是 dict)
                                         # 注意: image_processing_ray.py 返回的是 metadata.to_dict()
-                                        metadata = ImageRAGMetadata(**metadata_dict)
+                                        metadata = ImageRAGMetadata(**metadata_dict) if isinstance(metadata_dict, dict) else metadata_dict
                                         image_rag_metadata_map[file] = metadata
                                     except Exception as e:
                                         logger.error(f"Image RAG processing failed for {file}: {e}")

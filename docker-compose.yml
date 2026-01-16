@@ -162,6 +162,7 @@ services:
       - INFERENCE_DEVICES=${INFERENCE_DEVICES:-0}
       - VLLM_USE_MODELSCOPE=${VLLM_USE_MODELSCOPE:-true}
       - VLLM_RPC_TIMEOUT=${VLLM_RPC_TIMEOUT:-120000}
+      - VLLM_DTYPE=${VLLM_DTYPE:-auto}
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       # 用于健康检查的端口列表，逗号分隔，默认只检查 8000
 

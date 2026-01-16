@@ -5,7 +5,8 @@ from ray.serve.llm import LLMConfig, build_openai_app
 
 # Load configuration from environment variables
 tensor_parallel_size = int(os.getenv("VLLM_TENSOR_PARALLEL_SIZE", "1"))
-gpu_memory_utilization = float(os.getenv("VLLM_GPU_MEMORY_UTILIZATION", "0.9"))
+gpu_memory_utilization = float(os.getenv("VLLM_GPU_MEMORY_UTILIZATION", "0.6"))
+dtype = os.getenv("VLLM_DTYPE", "auto")
 model = os.getenv("MODEL", "opendatalab/MinerU2.5-2509-1.2B")
 
 # Configure the LLM
@@ -18,7 +19,7 @@ llm_config = LLMConfig(
         "tensor_parallel_size": tensor_parallel_size,
         "gpu_memory_utilization": gpu_memory_utilization,
         "max_model_len": 16384,
-        "dtype": "bfloat16",
+        "dtype": dtype,
         "limit_mm_per_prompt": {"image": 10},  # Prevent OOM with multiple images
     },
     deployment_config={

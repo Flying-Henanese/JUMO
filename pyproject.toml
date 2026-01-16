@@ -93,6 +93,7 @@ dependencies = [
     "grpcio (>=1.7.0)",
     "ray[serve] (>=2.10.0,<3.0.0)",
     "celery (>=5.5.3,<6.0.0)",
+    "timm (>=1.0.24,<2.0.0)",
 ]
 # 已从主依赖中移除：build/cachecontrol/cleo/crashtest/distlib/dulwich/findpython/importlib-metadata/
 # installer/jaraco-*/keyring/more-itertools/pkginfo/platformdirs/pip/poetry/poetry-core/
