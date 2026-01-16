@@ -101,6 +101,7 @@ services:
       - NLP_INFERENCE_MODE=ray
       - EMBEDDING_SERVICE_URL=http://mineru-nlp:8000/emb/encode
       - NER_SERVICE_URL=http://mineru-nlp:8000/ner/extract
+      - RAY_ADDRESS=ray://mineru-nlp:10001
 
     volumes:
       # 挂载日志目录，实现日志持久化

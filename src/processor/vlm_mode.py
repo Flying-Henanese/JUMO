@@ -47,6 +47,11 @@ from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.enum_class import MakeMode
 from mineru.backend.vlm.vlm_analyze import doc_analyze
 from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
+import ray
+from ray import serve
+import re
+from processor.image_processing.image_rag import ImageRAGMetadata
+
 
 from data.model import Task
 from wrapper.logger import log_with_time_consumption
@@ -56,6 +61,7 @@ from data.operation import TaskRepository
 from processor.markdown_splitter import process_markdown
 from processor.converters.file_converters import office_bytes_to_pdf_bytes
 from PIL import Image
+from processor.image_processing.image_rag import ImageRAGMetadata
 
 class PDFProcessor:
     def __init__(self, minio_tool: MinioConnection, task_repository: TaskRepository):
@@ -100,6 +106,14 @@ class PDFProcessor:
                 # 装饰器：自动选择可用 GPU，并设置 CUDA_VISIBLE_DEVICES
                 # pipeline_doc_analyze = with_gpu_selection(pipeline_doc_analyze)
 
+                # 存储文档中所有的图片RAG元数据，使用字典方便通过文件名检索
+                image_rag_metadata_map: dict[str, ImageRAGMetadata] = {}
+                try:
+                    image_rag_handle = serve.get_deployment_handle("image_rag_app", app_name="image_rag_app")
+                except Exception as e:
+                    logger.warning(f"Failed to get image_rag_handle: {e}")
+                    image_rag_handle = None
+
                 local_image_dir, local_md_dir = prepare_env(output_dir, file_name, "auto")
                 image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
@@ -124,11 +138,29 @@ class PDFProcessor:
                     for file in files:
                         if file.lower().endswith((".png", ".jpg", ".jpeg")):
                             with open(os.path.join(root, file), "rb") as img_f:
+                                img_bytes = img_f.read()
+                                
+                                # 提取图片的RAG元数据
+                                if image_rag_handle:
+                                    try:
+                                        # 使用 RPC 调用，直接传递 bytes
+                                        # 注意：这里为了简单起见使用了同步等待 (ray.get)，如果图片很多可以改为批量异步
+                                        metadata_dict = ray.get(image_rag_handle.process_image.remote(
+                                            image=img_bytes,
+                                            additional_prompt="<CAPTION>" # 同时获取 Object Detection 结果作为标签来源
+                                        ))
+                                        # 将字典转换回对象 (如果 process_image 返回的是 dict)
+                                        # 注意: image_processing_ray.py 返回的是 metadata.to_dict()
+                                        metadata = ImageRAGMetadata(**metadata_dict)
+                                        image_rag_metadata_map[file] = metadata
+                                    except Exception as e:
+                                        logger.error(f"Image RAG processing failed for {file}: {e}")
+
                                 remote_path = f"{current_task.task_id}/images/{file}"
                                 self.minio_tool.upload_file_by_bytes(
                                     bucket_name=current_task.output_bucket,
                                     object_name=remote_path,
-                                    file_bytes=img_f.read(),
+                                    file_bytes=img_bytes,
                                     content_type=f"image/{file.split('.')[-1]}"
                                 )
                                 images_list.append(remote_path)
@@ -147,6 +179,14 @@ class PDFProcessor:
                     object_name=f"{current_task.task_id}/{name_without_ext}.md",
                     file_bytes=clean_md.encode("utf-8"),
                     content_type="text/markdown"
+                )
+
+                # 先试着把image_rag_metadata_map上传到minio
+                self.minio_tool.upload_file_by_bytes(
+                    bucket_name=current_task.output_bucket,
+                    object_name=f"{current_task.task_id}/{name_without_ext}_images.json",
+                    file_bytes=json.dumps(image_rag_metadata_map, ensure_ascii=False, indent=4).encode("utf-8"),
+                    content_type="application/json"
                 )
                 
                 # 切分处理后的markdown内容，并增强表格标题
