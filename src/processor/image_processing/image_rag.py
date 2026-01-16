@@ -14,7 +14,7 @@ Key Components:
 """
 
 import os
-# os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 from abc import ABC, abstractmethod
 from typing import List, Optional, Dict, Any, Union
 from dataclasses import dataclass, asdict
@@ -40,18 +40,42 @@ class ImageRAGMetadata:
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
-    def to_markdown(self, include_image: bool = True) -> str:
+    def to_markdown(self, include_image: bool = True, mode: str = "embedded", paragraph_title: str = "") -> str:
         """
         Format metadata as a Markdown block suitable for RAG ingestion.
+        
+        Args:
+            include_image (bool): Whether to include the markdown image link.
+            mode (str): "embedded" for inline description, "standalone" for standalone block with header.
+            paragraph_title (str): Title of the section containing the image (used in 'standalone' mode).
         """
         md_lines = []
-        if include_image:
-            md_lines.append(f"![Image]({self.image_path})")
         
-        # Use blockquote to group metadata semantically with the image
-        md_lines.append(f"> **Image Description**: {self.caption}")
-        if self.tags:
-            md_lines.append(f"> **Tags**: {', '.join(self.tags)}")
+        if mode == "standalone":
+            # Strategy 1: Independent Paragraph/Chunk
+            # Useful for increasing retrieval hit rate for images specifically.
+            # Format: ### Image [Tag1, Tag2] - Section Title
+            tags_display = f"[{', '.join(self.tags)}]" if self.tags else ""
+            title_context = f"{paragraph_title}" if paragraph_title else ""
+            
+            # H3 header to distinguish image block
+            # md_lines.append(f"### Image {tags_display}{title_context}")
+            md_lines.append(f'{title_context}|{tags_display}')
+            if include_image:
+                md_lines.append(f"![Image]({self.image_path})")
+            
+            md_lines.append(f"**Description**: {self.caption}")
+            
+        else:
+            # Strategy 2: Embedded/Inline
+            # Keeps the reading flow natural.
+            if include_image:
+                md_lines.append(f"![Image]({self.image_path})")
+            
+            # Use blockquote to group metadata semantically with the image
+            md_lines.append(f"> **Description**: {self.caption}")
+            if self.tags:
+                md_lines.append(f"> **Tags**: {', '.join(self.tags)}")
         
         return "\n".join(md_lines)
 
@@ -61,12 +85,13 @@ class ImageDescriptionInterface(ABC):
     """
     
     @abstractmethod
-    def generate_description(self, image: Union[str, Image.Image]) -> str:
+    def generate_description(self, image: Union[str, Image.Image], additional_prompt) -> str:
         """
         Generate a natural language description for the image.
         
         Args:
             image: File path or PIL Image object.
+            additional_prompt: Additional prompt to guide the model.
             
         Returns:
             A string description of the image.
@@ -130,7 +155,7 @@ class Florence2Backend(ImageDescriptionInterface):
             return image.convert("RGB")
         return None
 
-    def generate_description(self, image: Union[str, Image.Image]) -> str:
+    def generate_description(self, image: Union[str, Image.Image], additional_prompt: str = None) -> str:
         if not self.model or not self.processor:
             return ""
         
@@ -139,8 +164,10 @@ class Florence2Backend(ImageDescriptionInterface):
             return ""
 
         try:
-            # Use MORE_DETAILED_CAPTION for rich context suitable for RAG
-            prompt = "<CAPTION>"
+            # Allow custom prompt via kwargs, default to DETAILED_CAPTION
+            # Available tasks: <CAPTION>, <DETAILED_CAPTION>, <MORE_DETAILED_CAPTION>, <OCR>, etc.
+            prompt = additional_prompt or "<DETAILED_CAPTION>"
+            
             inputs = self.processor(text=prompt, images=img_obj, return_tensors="pt")
             inputs = {k: v.to(self.device_str, self.torch_dtype) if v.dtype == torch.float else v.to(self.device_str) for k, v in inputs.items()}
 
@@ -164,7 +191,7 @@ class Florence2Backend(ImageDescriptionInterface):
             logger.error(f"Error in Florence-2 generation: {e}")
             return ""
 
-    def generate_tags(self, image: Union[str, Image.Image], top_k: int = 5) -> List[str]:
+    def generate_tags(self, image: Union[str, Image.Image], top_k: int = 5, additional_prompt: str = None) -> List[str]:
         """
         Generate tags using a hybrid approach:
         1. Phrase Grounding: Extract key entities from the caption.
@@ -317,14 +344,14 @@ class CLIPTaggingBackend(ImageDescriptionInterface):
         except Exception as e:
             logger.error(f"Failed to load CLIP model: {e}")
 
-    def generate_description(self, image: Union[str, Image.Image]) -> str:
+    def generate_description(self, image: Union[str, Image.Image], additional_prompt: str = None) -> str:
         # CLIP isn't a captioner, but we can fake it by joining top tags
-        tags = self.generate_tags(image, top_k=3)
+        tags = self.generate_tags(image, top_k=3, additional_prompt=additional_prompt)
         if tags:
             return f"Image classified as: {', '.join(tags)}"
         return "Image classification failed."
 
-    def generate_tags(self, image: Union[str, Image.Image], top_k: int = 5) -> List[str]:
+    def generate_tags(self, image: Union[str, Image.Image], top_k: int = 5, additional_prompt: str = None) -> List[str]:
         if not self.pipeline:
             return []
         
@@ -392,7 +419,7 @@ class LocalBLIPCaptioner(ImageDescriptionInterface):
             return image.convert("RGB")
         return None
 
-    def generate_description(self, image: Union[str, Image.Image]) -> str:
+    def generate_description(self, image: Union[str, Image.Image], additional_prompt: str = None) -> str:
         if not self.pipeline:
             return ""
         
@@ -443,11 +470,11 @@ class LocalBLIPCaptioner(ImageDescriptionInterface):
                 
         return tags[:top_k]
 
-    def generate_tags(self, image: Union[str, Image.Image], top_k: int = 5) -> List[str]:
+    def generate_tags(self, image: Union[str, Image.Image], top_k: int = 5, additional_prompt: str = None) -> List[str]:
         """
         Generates tags by extracting significant words from the caption.
         """
-        description = self.generate_description(image)
+        description = self.generate_description(image, additional_prompt)
         return self.extract_tags_from_text(description, top_k)
 
 class ImageRAGProcessor:
@@ -468,23 +495,28 @@ class ImageRAGProcessor:
             # Default to local BLIP model
             self.backend = LocalBLIPCaptioner()
 
-    def process_image(self, image_path: str) -> ImageRAGMetadata:
+    def process_image(self, image: Union[str, Image.Image], **kwargs) -> ImageRAGMetadata:
         """
         Process a single image and return metadata.
-        """
-        logger.info(f"Processing image for RAG: {image_path}")
         
-        caption = self.backend.generate_description(image_path)
+        Args:
+            image: File path (str) or PIL Image object.
+        """
+
+        image_path_str = image if isinstance(image, str) else "image_object"
+        
+        # Pass additional_prompt to backend
+        caption = self.backend.generate_description(image, additional_prompt=kwargs.get("additional_prompt"))
         
         # Optimization: If backend is LocalBLIPCaptioner, use the caption directly
         # to extract tags, avoiding a second inference pass.
         if isinstance(self.backend, LocalBLIPCaptioner):
             tags = self.backend.extract_tags_from_text(caption)
         else:
-            tags = self.backend.generate_tags(image_path)
+            tags = self.backend.generate_tags(image, additional_prompt=kwargs.get("additional_prompt"))
         
         metadata = ImageRAGMetadata(
-            image_path=image_path,
+            image_path=image_path_str,
             caption=caption,
             tags=tags,
             model_name=getattr(self.backend, "model_name", "custom")
@@ -492,46 +524,28 @@ class ImageRAGProcessor:
         
         logger.debug(f"Generated metadata: {metadata}")
         return metadata
-
-if __name__ == "__main__":
-    import sys
+# region
+# if __name__ == "__main__":
+#     import sys
     
-    # Configure logging for standalone execution
-    logger.remove()
-    logger.add(sys.stderr, level="INFO")
+#     # Configure logging for standalone execution
+#     logger.remove()
+#     logger.add(sys.stderr, level="INFO")
     
-    # Hardcoded test image path
-    test_image_path = "tests/test_resource/test_image.jpg"
+#     # Hardcoded test image path
+#     test_image_path = "tests/test_resource/test_2.jpg"
     
-    if os.path.exists(test_image_path):
-        print(f"Processing test image: {test_image_path}")
-        # Use Florence-2 backend
-        processor = ImageRAGProcessor(model_backend=Florence2Backend())
-        try:
-            result = processor.process_image(test_image_path)
-            print("\n=== Result ===")
-            print(f"Caption: {result.caption}")
-            print(f"Tags: {result.tags}")
-            print(f"Model: {result.model_name}")
-            print("==============")
-        except Exception as e:
-            logger.error(f"Processing failed: {e}")
-    else:
-        print(f"Test image not found at: {test_image_path}")
-        print("\nRunning a mock test instead...")
-        
-        # Mock test if no image provided
-        class MockBackend(ImageDescriptionInterface):
-            def generate_description(self, image: Union[str, Image.Image]) -> str:
-                return "A mock description of a test image showing a cat."
-            
-            def generate_tags(self, image: Union[str, Image.Image], top_k: int = 5) -> List[str]:
-                return ["cat", "test", "mock"]
-                
-        mock_processor = ImageRAGProcessor(model_backend=MockBackend())
-        mock_result = mock_processor.process_image("dummy_path.jpg")
-        
-        print("\n=== Mock Result ===")
-        print(f"Caption: {mock_result.caption}")
-        print(f"Tags: {mock_result.tags}")
-        print("===================")
+#     if os.path.exists(test_image_path):
+#         print(f"Processing test image: {test_image_path}")
+#         # Use Florence-2 backend
+#         processor = ImageRAGProcessor(model_backend=Florence2Backend())
+#         try:
+#             result = processor.process_image(test_image_path, additional_prompt="<OD>")
+#             print("\n=== Result ===")
+#             print(f"Caption: {result.caption}")
+#             print(f"Tags: {result.tags}")
+#             print(f"Model: {result.model_name}")
+#             print("==============")
+#         except Exception as e:
+#             logger.error(f"Processing failed: {e}")
+# endregion
