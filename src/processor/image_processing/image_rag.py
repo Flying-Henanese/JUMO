@@ -140,7 +140,7 @@ class Florence2Backend(ImageDescriptionInterface):
 
         try:
             # Use MORE_DETAILED_CAPTION for rich context suitable for RAG
-            prompt = "<MORE_DETAILED_CAPTION>"
+            prompt = "<CAPTION>"
             inputs = self.processor(text=prompt, images=img_obj, return_tensors="pt")
             inputs = {k: v.to(self.device_str, self.torch_dtype) if v.dtype == torch.float else v.to(self.device_str) for k, v in inputs.items()}
 
@@ -501,7 +501,7 @@ if __name__ == "__main__":
     logger.add(sys.stderr, level="INFO")
     
     # Hardcoded test image path
-    test_image_path = "tests/test_resource/gong.jpg"
+    test_image_path = "tests/test_resource/test_image.jpg"
     
     if os.path.exists(test_image_path):
         print(f"Processing test image: {test_image_path}")
