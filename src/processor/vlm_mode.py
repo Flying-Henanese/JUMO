@@ -110,7 +110,8 @@ class PDFProcessor:
                 try:
                     # 注意：app_name 对应 nlp_serve_config.yaml 中的 name
                     # deployment_name 对应 image_processing_ray.py 中 @serve.deployment 装饰的类名 (默认为类名 ImageRAGDeployment)
-                    image_rag_handle = serve.get_deployment_handle("ImageRAGDeployment", app_name="image_rag_app")
+                    # 如果使用 serve.run(image_rag) 启动，默认 app_name 是 "default"
+                    image_rag_handle = serve.get_deployment_handle("ImageRAGDeployment", app_name="default")
                 except Exception as e:
                     logger.warning(f"Failed to get image_rag_handle: {e}")
                     image_rag_handle = None
@@ -153,7 +154,8 @@ class PDFProcessor:
                                         # 将字典转换回对象 (如果 process_image 返回的是 dict)
                                         # 注意: image_processing_ray.py 返回的是 metadata.to_dict()
                                         metadata = ImageRAGMetadata(**metadata_dict) if isinstance(metadata_dict, dict) else metadata_dict
-                                        image_rag_metadata_map[file] = metadata
+                                        # 存入字典时需要转换为 dict，否则 json.dumps 会失败
+                                        image_rag_metadata_map[file] = metadata.to_dict() if hasattr(metadata, "to_dict") else metadata
                                     except Exception as e:
                                         logger.error(f"Image RAG processing failed for {file}: {e}")
 
