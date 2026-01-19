@@ -32,7 +32,7 @@ async def test_rpc_call():
         return
 
     # Find a test image
-    resource_dir = os.path.join(os.path.dirname(__file__), "test_resource")
+    resource_dir = os.path.join(os.path.dirname(__file__), "test_resource/")
     image_files = [f for f in os.listdir(resource_dir) if f.endswith(".jpg")]
     
     if not image_files:
