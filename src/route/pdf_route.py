@@ -32,7 +32,7 @@ MAX_QUEUING_TASKS = int(os.getenv('MAX_QUEUING_TASKS', 40))
 UPLOAD_BUCKET = os.getenv('UPLOAD_BUCKET', 'uploads')
 
 @router.post("/drop-pdf")
-async def drop_pdf(
+def drop_pdf(
     pdf_path: str,
     bucket_name: str,
     output_bucket: str,
@@ -110,7 +110,7 @@ async def drop_pdf(
 
 
 @router.post("/analyze-pdf")
-async def analyze_pdf(
+def analyze_pdf(
     pdf_path: str, 
     bucket_name: str, 
     output_bucket: str,
@@ -169,7 +169,7 @@ async def analyze_pdf(
 
 
 @router.post("/upload-and-analyze-pdf")
-async def upload_and_analyze_pdf(
+def upload_and_analyze_pdf(
     output_bucket: str,
     file: UploadFile = File(...),
     ocr_enabled: bool = False,
@@ -193,7 +193,7 @@ async def upload_and_analyze_pdf(
         bucket_name = UPLOAD_BUCKET  # 可以配置为常量
         object_name = f"{task_id}/{file.filename}"
         # 读取文件内容为字节流
-        file_content = await file.read()
+        file_content = file.file.read()
         # 获取文件类型（默认为application/octet-stream）
         content_type = file.content_type or "application/octet-stream"
         # 调用minio上传
@@ -241,7 +241,7 @@ async def upload_and_analyze_pdf(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/task-status/{task_id}")
-async def get_task_status(task_id: str):
+def get_task_status(task_id: str):
     """
     获取任务状态接口（不再依赖 ActiveTask）
     """
@@ -264,7 +264,7 @@ async def get_task_status(task_id: str):
     })
 
 @router.get("/download-task-files/{task_id}", response_class=StreamingResponse)
-async def download_task_files(task_id: str):
+def download_task_files(task_id: str):
     try:
         task = task_repository.get_task_by_id(task_id)
         if not task:
@@ -304,7 +304,7 @@ async def download_task_files(task_id: str):
 
 
 @router.post("/reprocess-task/{task_id}")
-async def reprocess_task(
+def reprocess_task(
     task_id: str
 ):
     """
@@ -342,7 +342,7 @@ async def reprocess_task(
 
 
 @router.post("/batch-task-status")
-async def get_batch_task_status(task_ids: List[str]):
+def get_batch_task_status(task_ids: List[str]):
     """
     批量获取任务状态接口
     :param task_ids: 任务ID列表
@@ -364,7 +364,7 @@ async def get_batch_task_status(task_ids: List[str]):
         if task:
             results.append({
                 "task_id": task.task_id,
-                "status": TaskStatus.COMPLETED,
+                "status": task.status,
                 "result": task.output_info
             })
         else:

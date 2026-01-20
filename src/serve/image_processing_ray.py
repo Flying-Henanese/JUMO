@@ -23,10 +23,17 @@ image_gpu_per_instance = float(os.getenv("IMAGE_GPU_PER_INSTANCE", "0.15"))
 )
 @serve.ingress(image_rag_app)
 class ImageRAGDeployment:
-    def __init__(self):
+    def __init__(self):        
         # Initialize the processor with Florence-2 backend
         # This will load the model into GPU memory
+        print(f"Initializing ImageRAGDeployment with HF_ENDPOINT={os.environ['HF_ENDPOINT']}...")
         self.processor = ImageRAGProcessor(model_backend=Florence2Backend())
+        
+        # Check if model loaded successfully
+        if self.processor.backend.model is None:
+            print("CRITICAL ERROR: Florence-2 model failed to load! All requests will return empty results.")
+        else:
+            print("ImageRAGDeployment initialized successfully with model loaded.")
 
     def _read_image_from_bytes(self, image_bytes: bytes) -> Image.Image:
         """Helper to convert bytes to PIL Image."""
@@ -56,6 +63,10 @@ class ImageRAGDeployment:
             image=image_obj,
             additional_prompt=additional_prompt
         )
+        
+        if not metadata.caption:
+             print("WARNING: Generated empty caption. Model might not be loaded or image is invalid.")
+             
         return metadata.to_dict()
 
     def process_image(self, image: Union[str, Image.Image, bytes], additional_prompt: str = None):
@@ -63,6 +74,9 @@ class ImageRAGDeployment:
         Direct method call for Ray handles.
         Supports file path (str), PIL Image object, or raw bytes.
         """
+        if self.processor.backend.model is None:
+            print("ERROR: Processing request but Model is NOT loaded.")
+
         if isinstance(image, bytes):
             image = self._read_image_from_bytes(image)
             

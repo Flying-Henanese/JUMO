@@ -14,7 +14,6 @@ Key Components:
 """
 
 import os
-os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 from abc import ABC, abstractmethod
 from typing import List, Optional, Dict, Any, Union
 from dataclasses import dataclass, asdict
@@ -34,6 +33,7 @@ class ImageRAGMetadata:
     image_path: str
     caption: str = ""
     tags: List[str] = None
+    ocr: str = ""
     confidence: float = 0.0
     model_name: str = ""
 
@@ -74,6 +74,8 @@ class ImageRAGMetadata:
             
             # Use blockquote to group metadata semantically with the image
             md_lines.append(f"> **Description**: {self.caption}")
+            if self.ocr:
+                md_lines.append(f"> **OCR**: {self.ocr}")
             if self.tags:
                 md_lines.append(f"> **Tags**: {', '.join(self.tags)}")
         
@@ -111,6 +113,13 @@ class ImageDescriptionInterface(ABC):
             List of tag strings.
         """
         pass
+
+    def generate_ocr(self, image: Union[str, Image.Image]) -> str:
+        """
+        Generate OCR text from the image.
+        Default implementation returns empty string.
+        """
+        return ""
 
 class Florence2Backend(ImageDescriptionInterface):
     """
@@ -280,6 +289,12 @@ class Florence2Backend(ImageDescriptionInterface):
         valid_tags.sort(key=len, reverse=True)
         
         return valid_tags[:top_k]
+
+    def generate_ocr(self, image: Union[str, Image.Image]) -> str:
+        """
+        Generate OCR text using Florence-2 <OCR> task.
+        """
+        return self.generate_description(image, additional_prompt="<OCR>")
 
     def extract_tags_from_text(self, text: str, top_k: int = 5) -> List[str]:
         # Use the same logic as LocalBLIPCaptioner (could be refactored to a mixin)
@@ -508,6 +523,9 @@ class ImageRAGProcessor:
         # Pass additional_prompt to backend
         caption = self.backend.generate_description(image, additional_prompt=kwargs.get("additional_prompt"))
         
+        # Generate OCR (if supported by backend)
+        ocr_text = self.backend.generate_ocr(image)
+        
         # Optimization: If backend is LocalBLIPCaptioner, use the caption directly
         # to extract tags, avoiding a second inference pass.
         if isinstance(self.backend, LocalBLIPCaptioner):
@@ -519,6 +537,7 @@ class ImageRAGProcessor:
             image_path=image_path_str,
             caption=caption,
             tags=tags,
+            ocr=ocr_text,
             model_name=getattr(self.backend, "model_name", "custom")
         )
         

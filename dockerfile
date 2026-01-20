@@ -72,6 +72,9 @@ RUN uv venv .venv --python 3.12
 
 RUN uv pip install --no-cache-dir -r requirements.txt --python .venv --index-url https://mirrors.aliyun.com/pypi/simple/
 
+# 临时操作，删除hf-xet相关的依赖
+#RUN uv pip uninstall hf-xet
+
 # ==========================================
 # Stage 2: Runner (运行时精简镜像)
 # -- 这里要做的是实现真正的运行环境

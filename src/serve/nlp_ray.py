@@ -3,7 +3,7 @@ import os
 from ray import serve
 from fastapi import FastAPI
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Union, Optional
 from processor.nlp_inference.local_impl import LocalNERClient, LocalEmbeddingClient
 from src.utils.auto_device_selector import get_env_vars_for_device
 
@@ -37,9 +37,10 @@ embedding_app = FastAPI()
 # Get resource allocation from env
 # Default to 0.2 GPUs per instance (assuming light NLP models)
 nlp_gpu_per_instance = float(os.getenv("NLP_GPU_PER_INSTANCE", "0.1"))
+nlp_cpu_per_instance = float(os.getenv("NLP_CPU_PER_INSTANCE", "1"))
 
 @serve.deployment(
-    ray_actor_options={"num_gpus": nlp_gpu_per_instance*2}, # NER模型要同时兼顾两种语言，所以比例稍大一点
+    ray_actor_options={"num_gpus": nlp_gpu_per_instance*2, "num_cpus": nlp_cpu_per_instance}, # NER模型要同时兼顾两种语言，所以比例稍大一点
     autoscaling_config={"min_replicas": 1, "max_replicas": 4}
 )
 @serve.ingress(ner_app)
@@ -57,11 +58,19 @@ class NERDeployment:
             entity_num=request.entity_num
         )
 
-    def extract_entities(self, *args, **kwargs):
-        return self.client.extract_entities(*args, **kwargs)
+    def extract_entities(self, text: str, confidence_threshold: float = 0.7, return_objects: bool = False, entity_num: int = 5):
+        """
+        Direct method call for Ray handles.
+        """
+        return self.client.extract_entities(
+            text=text,
+            confidence_threshold=confidence_threshold,
+            return_objects=return_objects,
+            entity_num=entity_num
+        )
 
 @serve.deployment(
-    ray_actor_options={"num_gpus": nlp_gpu_per_instance},
+    ray_actor_options={"num_gpus": nlp_gpu_per_instance, "num_cpus": nlp_cpu_per_instance},
     autoscaling_config={"min_replicas": 1, "max_replicas": 4}
 )
 @serve.ingress(embedding_app)
@@ -89,8 +98,11 @@ class EmbeddingDeployment:
                 
         return results
 
-    def encode(self, *args, **kwargs):
-        return self.client.encode(*args, **kwargs)
+    def encode(self, sentences: Union[str, List[str]], **kwargs):
+        """
+        Direct method call for Ray handles.
+        """
+        return self.client.encode(sentences=sentences, **kwargs)
 
 # 定义应用入口，方便通过 serve run 启动
 # 实际部署时可能需要分别启动，或者组合在一起

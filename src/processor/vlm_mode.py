@@ -66,6 +66,26 @@ class PDFProcessor:
     def __init__(self, minio_tool: MinioConnection, task_repository: TaskRepository):
         self.minio_tool: MinioConnection = minio_tool
         self.task_repository: TaskRepository = task_repository
+        self._image_rag_handle = None
+
+    def _get_image_rag_handle(self):
+        """
+        Lazy load and cache the Ray Serve handle.
+        This prevents creating a new LongPollClient for every request, reducing log noise.
+        """
+        if self._image_rag_handle is not None:
+            return self._image_rag_handle
+
+        try:
+            # app_name matches name in nlp_serve_config.yaml
+            target_app_name = os.getenv("IMAGE_RAG_APP_NAME", "image_rag_app")
+            self._image_rag_handle = serve.get_deployment_handle("ImageRAGDeployment", app_name=target_app_name)
+            logger.info(f"Successfully connected to ImageRAGDeployment (app={target_app_name})")
+        except Exception as e:
+            logger.warning(f"Failed to get image_rag_handle: {e}")
+            self._image_rag_handle = None
+        
+        return self._image_rag_handle
     
     @log_with_time_consumption(level="INFO")
     # @with_gpu_selection
@@ -107,14 +127,9 @@ class PDFProcessor:
 
                 # 存储文档中所有的图片RAG元数据，使用字典方便通过文件名检索
                 image_rag_metadata_map: dict[str, ImageRAGMetadata] = {}
-                try:
-                    # 注意：app_name 对应 nlp_serve_config.yaml 中的 name
-                    # deployment_name 对应 image_processing_ray.py 中 @serve.deployment 装饰的类名 (默认为类名 ImageRAGDeployment)
-                    # 如果使用 serve.run(image_rag) 启动，默认 app_name 是 "default"
-                    image_rag_handle = serve.get_deployment_handle("ImageRAGDeployment", app_name="default")
-                except Exception as e:
-                    logger.warning(f"Failed to get image_rag_handle: {e}")
-                    image_rag_handle = None
+                
+                # Get cached handle instead of creating new one every time
+                image_rag_handle = self._get_image_rag_handle()
 
                 local_image_dir, local_md_dir = prepare_env(output_dir, file_name, "auto")
                 image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
