@@ -1,0 +1,21 @@
+mineru-venv/
+.venv/
+models/
+logs/
+tests/test_resource/
+*.pyc
+.vscode/
+database/
+backup/
+kernel_meta/
+poetry.lock
+output.log
+
+# Python cache directories
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution directories
+dist/
+**/.DS_Store

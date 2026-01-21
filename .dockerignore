@@ -1,0 +1,38 @@
+# 忽略版本控制文件
+.git
+.gitignore
+
+# 忽略本地虚拟环境（防止覆盖容器内的 .venv）
+.venv
+venv
+ENV
+
+# 忽略 Python 缓存和编译文件
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+build/
+dist/
+*.egg-info/
+
+# 忽略 IDE 配置
+.idea
+.vscode
+.run
+
+# 忽略环境变量文件（敏感信息）
+#.env
+#.env.*
+
+# 忽略 Docker 相关文件（避免循环包含）
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# 忽略其他不必要的缓存
+.mypy_cache
+.pytest_cache
+.coverage
+htmlcov/

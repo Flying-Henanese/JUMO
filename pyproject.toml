@@ -1,0 +1,151 @@
+[project]
+name = "Jumo"
+version = "1.0.1"
+description = "Jumo 是一个基于 FastAPI 的文档结构化解析服务，支持扫描件、长 PDF、嵌套表格等异构文档的快速结构化拆解。"
+authors = [
+    {name = "ZHOU shujian"}
+]
+readme = "README.md"
+requires-python = ">=3.10,<3.14"  # 添加上限约束 
+dependencies = [
+    "anyio==4.9.0",
+    "backports-tarfile==1.2.0",
+    "botocore==1.38.13",
+    "brotli==1.1.0",
+    "certifi==2025.4.26",
+    "cffi==1.17.1",
+    "charset-normalizer==3.4.2",
+    "click==8.1.8",
+    "colorlog==6.9.0",
+    "cryptography==44.0.3",
+    "exceptiongroup==1.2.2",
+    "fast-langdetect>=0.2.3,<0.3.0",  # 修改为兼容版本范围
+    "fastjsonschema==2.21.1",
+    "fasttext-predict==0.9.2.4",
+    "filelock==3.18.0",
+    "fsspec==2025.3.2",
+    "h11==0.16.0",
+    "httpcore==1.0.9",
+    "httpx==0.28.1",
+    "huggingface-hub (==0.34.0)",
+    "idna==3.10",
+    "jmespath==1.0.1",
+    "joblib==1.5.0",
+    "loguru==0.7.3",
+    "msgpack==1.1.0",
+    "numpy>=2.1.0",
+    "packaging==25.0",
+    "pdfminer-six==20250506",
+    "requests==2.32.3",
+    "requests-toolbelt==1.0.0",
+    "robust-downloader==0.0.2",
+    "s3transfer==0.12.0",
+    "scikit-learn==1.6.1",
+    "scipy==1.13.1",
+    "setuptools>=65.0.0",  # 保留这个版本约束
+    "six==1.17.0",
+    "sniffio==1.3.1",
+    "threadpoolctl==3.6.0",
+    "tqdm==4.67.1",
+    "typing-extensions==4.13.2",
+    "urllib3>=2.0.0",  # 修改为兼容Python 3.12+的版本
+    "wordninja==2.0.0",
+    "xattr==1.1.4",
+    "zstandard==0.23.0",
+    "fastapi (>=0.115.12,<0.116.0)",
+    "uvicorn (>=0.34.2,<0.35.0)",
+    "python-multipart (>=0.0.20,<0.0.21)",
+    "opencv-python (>=4.11.0.86,<5.0.0.0)",
+    "ultralytics (>=8.3.137,<9.0.0)",
+    "doclayout-yolo (>=0.0.3,<0.0.4)",
+    "rapid-table (>=1.0.5,<2.0.0)",
+    "ftfy (>=6.3.1,<7.0.0)",
+    "dill (>=0.4.0,<0.5.0)",
+    "pyclipper (>=1.3.0.post6,<2.0.0)",
+    "omegaconf (>=2.3.0,<3.0.0)",
+    "openai (>=1.79.0,<2.0.0)",
+    "minio (>=7.2.15,<8.0.0)",
+    "pynvml (>=12.0.0,<13.0.0)",
+    "apscheduler (>=3.11.0,<4.0.0)",
+    "python-dotenv (>=1.1.0,<2.0.0)",
+    "ulid (>=1.1,<2.0)",
+    "structlog (>=25.4.0,<26.0.0)",
+    "mineru (>=2.5.0,<2.8.0)",
+    "sqlalchemy (>=2.0.41,<3.0.0)",
+    "tokenizers (>=0.21.2,<0.22.0)",
+    "shapely (>=2.1.1,<3.0.0)",
+    "transformers (>=4.53.0,<5.0.0)",
+    "beautifulsoup4 (>=4.13.4,<5.0.0)",
+    "pybase64 (>=1.4.2,<2.0.0)",
+    "markdown-it-py (>=3.0.0,<4.0.0)",
+    "docling (>=2.43.0,<3.0.0)",
+    "peft (>=0.17.0,<0.18.0)",
+    "sentence-transformers (>=5.1.0,<6.0.0)",
+    "nltk (>=3.9.1,<4.0.0)",
+    "pyarrow (<=20.0.0)",
+    "addict (>=2.4.0,<3.0.0)",
+    "mdit-py-plugins (>=0.5.0,<0.6.0)",
+    "redislite (>=6.2.912183,<7.0.0)",
+    "html-to-markdown (>=1.9.1,<2.0.0)",
+    "stringzilla (>=3.12.6,<4.0.0)",
+    "vllm (>=0.11.0,<0.12.0)",
+    "litserve (>=0.2.15,<0.3.0)",
+    "celery (>=5.5.3,<6.0.0)",
+]
+# 已从主依赖中移除：build/cachecontrol/cleo/crashtest/distlib/dulwich/findpython/importlib-metadata/
+# installer/jaraco-*/keyring/more-itertools/pkginfo/platformdirs/pip/poetry/poetry-core/
+# pyproject-hooks/shellingham/tomli/tomlkit/trove-classifiers/virtualenv/zipp/pbs-installer
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.13.0"  # 代码风格检查（linter），仅开发/CI使用
+poetry = { version = "^2.1.3", python = ">=3.12,<3.14" }  # 依赖管理与打包工具，生产不直接使用
+build = "1.2.2.post1"  # PEP 517 构建器，用于生成 wheel/sdist，运行时不需要
+py-spy = "^0.4.0"  # 采样型性能分析器，仅调试性能时用
+pytest = "^8.4.2"  # 测试框架，仅开发/CI执行测试
+cachecontrol = "0.14.3"  # 下载缓存工具，多用于 pip/requests 加速，运行时无直接依赖
+cleo = "2.1.0"  # CLI 框架，为 Poetry 命令行提供支持，生产不调用
+crashtest = "0.4.1"  # 异常报告工具，被 Poetry 使用，生产无需
+distlib = "0.3.9"  # 打包工具库，pip/build 使用，运行时不需要
+dulwich = "0.22.8"  # 纯 Python Git 客户端，拉取 VCS 源码用，生产不需要
+findpython = "0.6.3"  # 查找系统 Python 解释器（Poetry 使用），生产不需要
+importlib-metadata = "8.6.1"  # 元数据回溯包，工具链读取包信息；Py>=3.10 运行时无需显式安装
+installer = "0.7.0"  # 安装器（PEP 517 流程），仅构建/发布使用
+jaraco-classes = "3.4.0"  # 工具链依赖（keyring/setuptools 生态），生产不需要
+jaraco-context = "6.0.1"  # 工具链依赖，生产不需要
+jaraco-functools = "4.1.0"  # 工具链依赖，生产不需要
+keyring = "25.6.0"  # 凭证存储（上传/发布用），生产运行时不需要
+more-itertools = "10.7.0"  # 迭代工具集，常用于测试/打包，生产不需要
+pkginfo = "1.12.1.2"  # 读取包元信息（发布流程），运行时不需要
+platformdirs = "4.3.8"  # 跨平台配置目录定位（Poetry 使用），生产不需要
+pip = ">=23.0"  # 包管理器，开发/构建环境用；不应作为生产运行时依赖
+poetry-core = "2.1.3"  # Poetry 构建核心库，构建时需要，运行时不需要
+pyproject-hooks = "1.2.0"  # PEP 517 钩子协议库，仅构建时用
+shellingham = "1.5.4"  # 终端壳类型检测（Poetry 使用），生产不需要
+tomli = "2.2.1"  # TOML 解析（只读），工具链用，运行时不需要
+tomlkit = "0.13.2"  # TOML 解析/写入（Poetry 使用），运行时不需要
+trove-classifiers = "2025.5.9.12"  # PyPI 分类工具，发布打包用
+virtualenv = "20.31.2"  # 创建隔离虚拟环境，开发/CI用
+zipp = "3.21.0"  # zip 接口扩展（importlib-metadata 依赖），工具链需要
+pbs-installer = "2025.4.9"  # 私有打包/安装管线工具，仅开发/发布
+
+[tool.poetry]
+include = [
+    ".env"
+]
+package-mode = true
+
+
+
+[[tool.poetry.source]]
+name = "aliyun"
+url = "https://mirrors.aliyun.com/pypi/simple/"
+priority = "primary"
+
+
+[tool.poetry.group.optional.dependencies]
+triton = "^3.3.1"  # GPU/加速相关，可选安装（只有需要 GPU 时才安装）
