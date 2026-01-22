@@ -183,7 +183,7 @@ services:
 
     volumes:
       - ./logs:/app/logs
-      - ./src:/app/src
+      - ./src:/app/src  
       - ${HOME}/.cache/huggingface:/root/.cache/huggingface
       - ${HOME}/.cache/modelscope:/root/.cache/modelscope
       - ${HOME}/.cache/vllm:/root/.cache/vllm
@@ -211,7 +211,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 8
-      start_period: 150s
+      start_period: 150s # 910B环境的CPU性能较弱，需要更长的加载时间
 
     # 启动 vLLM 后端，并通过 tail -f 保持容器前台进程不退出
     command: >

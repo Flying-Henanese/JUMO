@@ -89,8 +89,4 @@ ENV CELERY_PATH=celery
 ENV PYTHONPATH=/app/src
 
 
-# 声明挂载点，以便在运行时挂载宿主机缓存目录
-VOLUME ["/root/.cache/huggingface", "/root/.cache/modelscope", "/root/.cache/vllm", "/root/nltk_data"]
 
-# 启动命令
-CMD ["bash", "manage_services.sh", "start"]
