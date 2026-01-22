@@ -33,26 +33,12 @@ class RedisClient:
         self.mode = mode
         self.db = db_index if db_index is not None else int(os.getenv('REDIS_DB', 0))
         
-        # 如果使用内嵌redis服务
-        if os.getenv('USE_INDEPENDENT_REDIS', '').lower() == "false":
-            # 这里有点像是一个monkey patch，把redis标准的客户端重定向到内嵌的redis客户端
-            # 这样我们就可以不改变使用方式，同时使用内嵌的redis服务了
-            rpatch.patch_redis(dbfile=embedded_dbfile)
-            # 这里设置decode_responses=False，因为我们需要原始的字节数据，后续使用pickle进行反序列化
-            self.client = EmbeddedRedis(dbfilename=embedded_dbfile, decode_responses=False) if embedded_dbfile else EmbeddedRedis()
-            # 对于内嵌Redis，使用SELECT命令切换数据库
-            self.client.execute_command('SELECT', self.db)
-        # 如果使用外部独立redis服务
-        else:
-            # 这里需要unpatch，因为如果之前使用了内嵌的redis服务，那么这里需要把连接重定向到外部的redis服务
-            # 虽然这里和上面的分支是互斥的，但作为防御性措施，防止出现问题
-            rpatch.unpatch_redis()
-            # 使用环境变量配置连接外部redis服务
-            cfg = external_config or (get_redis_config_from_env() or {})
-            if db_index is not None:
-                cfg['db'] = db_index
-            pool = redis.ConnectionPool(**cfg)
-            self.client = redis.Redis(connection_pool=pool, decode_responses=False)
+        # 使用环境变量配置连接外部redis服务
+        cfg = external_config or (get_redis_config_from_env() or {})
+        if db_index is not None:
+            cfg['db'] = db_index
+        pool = redis.ConnectionPool(**cfg)
+        self.client = redis.Redis(connection_pool=pool, decode_responses=False)
 
     def get_client(self) -> Union[redis.Redis, EmbeddedRedis]:
         return self.client

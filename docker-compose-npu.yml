@@ -43,6 +43,9 @@ services:
       - ./logs:/app/logs
       # 挂载源码目录，实现代码修改后的热重载
       - ./src:/app/src
+      # 模型相关配置
+      - ${HOME}/nltk_data:/root/nltk_data
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
       # NPU 驱动挂载 (API服务也需要加载torch_npu)
       - /usr/local/Ascend/driver:/usr/local/Ascend/driver
       - /usr/local/Ascend/add-ons:/usr/local/Ascend/add-ons

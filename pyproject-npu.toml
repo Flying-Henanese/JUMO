@@ -96,7 +96,6 @@ dependencies = [
     "sortedcontainers (>=2.4.0,<3.0.0)",
     "ray[serve] (>=2.48.0,<3.0.0)",
     "mdit-py-plugins (>=0.5.0,<0.6.0)",
-    "redislite (>=6.2.912183,<7.0.0)",
     "html-to-markdown (>=1.9.1,<2.0.0)",
     "stringzilla (>=3.12.6,<4.0.0)",
     "litserve (>=0.2.15,<0.3.0)",

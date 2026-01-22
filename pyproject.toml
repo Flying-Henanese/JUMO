@@ -86,7 +86,6 @@ dependencies = [
     "pyarrow (<=20.0.0)",
     "addict (>=2.4.0,<3.0.0)",
     "mdit-py-plugins (>=0.5.0,<0.6.0)",
-    "redislite (>=6.2.912183,<7.0.0)",
     "html-to-markdown (>=1.9.1,<2.0.0)",
     "stringzilla (>=3.12.6,<4.0.0)",
     "vllm (>=0.11.0,<0.12.0)",
