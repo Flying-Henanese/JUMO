@@ -183,6 +183,7 @@ services:
 
     volumes:
       - ./logs:/app/logs
+      - ./src:/app/src
       - ${HOME}/.cache/huggingface:/root/.cache/huggingface
       - ${HOME}/.cache/modelscope:/root/.cache/modelscope
       - ${HOME}/.cache/vllm:/root/.cache/vllm
