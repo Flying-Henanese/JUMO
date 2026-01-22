@@ -108,7 +108,7 @@ def analyze_document_files(
 
 @router.post("/analyze-pdf")
 @api_key_required
-async def analyze_pdf(
+def analyze_pdf(
     background_tasks: BackgroundTasks, 
     request: BatchAnalyzeRequest
 ) -> BatchPDFAnalyzeResponse:
@@ -177,7 +177,7 @@ async def analyze_pdf(
 
 @router.post("/batch-task-status", response_model=BatchTaskStatusResponse)
 @api_key_required
-async def get_batch_task_status(taskIds: List[str]) -> BatchTaskStatusResponse:
+def get_batch_task_status(taskIds: List[str]) -> BatchTaskStatusResponse:
     """
     批量获取任务状态接口
     :param taskIds: 任务ID列表

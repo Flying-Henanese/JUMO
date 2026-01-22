@@ -13,6 +13,11 @@ services:
       - PYTHONPATH=/app/src
       - REDIS_HOST=redis # Redis 配置（通过docker-compose内的服务名redis访问）
       - REDIS_PORT=${REDIS_PORT:-6379}
+      
+      # 禁用 Ultralytics (YOLO) 的自动更新检查和统计上报，加速启动
+      - YOLO_VERBOSE=False
+      - ULTRALYTICS_AUTOINSTALL=False
+      
       - REDIS_DB=${REDIS_DB:-0} 
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - WORKER_QUEUE_NAME=${WORKER_QUEUE_NAME:-celery}
@@ -82,6 +87,10 @@ services:
       - PYTHON_PATH=${PYTHON_PATH:-python}
       - HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
       - MINERU_MODEL_SOURCE=${MINERU_MODEL_SOURCE:-modelscope}
+
+      # 禁用 Ultralytics (YOLO) 的自动更新检查和统计上报，加速启动
+      - YOLO_VERBOSE=False
+      - ULTRALYTICS_AUTOINSTALL=False
 
       # Redis 配置（通过服务名 redis 访问）
       - REDIS_HOST=redis
