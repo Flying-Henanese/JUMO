@@ -2,7 +2,7 @@ services:
   # FastAPI 主服务
   mineru-api:
     build: .
-    image: mineru-service:latest
+    image: jumo:latest
     container_name: mineru-api
     restart: unless-stopped
     ports:
@@ -70,7 +70,7 @@ services:
 
   # Celery Worker 容器
   mineru-worker:
-    image: mineru-service:latest
+    image: jumo:latest
     container_name: mineru-worker
     restart: unless-stopped
 
@@ -159,7 +159,7 @@ services:
 
   # vLLM 推理后端容器
   vllm:
-    image: mineru-service:latest
+    image: jumo:latest
     container_name: mineru-vllm
     restart: unless-stopped
 
