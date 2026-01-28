@@ -129,3 +129,23 @@ def enhance_table_titles(md_text: str) -> str:
                     lines[i] = re.sub(r'^(\s*#{1,6}\s+).+$', r'\1' + new_heading_text, line)
         i += 1
     return '\n'.join(lines)
+
+
+if __name__ == "__main__":
+    import os
+
+    input_file = "/home/mineru_dev/mineru_universal/mineru-service/tests/test_resource/processed_test.md"
+    output_file = "/home/mineru_dev/mineru_universal/mineru-service/tests/test_resource/title_enhanced_test.md"
+
+    if os.path.exists(input_file):
+        with open(input_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        processed_content = enhance_table_titles(content)
+        
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write(processed_content)
+        
+        print(f"Processed file saved to: {output_file}")
+    else:
+        print(f"Input file not found: {input_file}")

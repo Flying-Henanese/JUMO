@@ -35,26 +35,13 @@ from markdown_it import MarkdownIt
 from mdit_py_plugins.dollarmath import dollarmath_plugin
 import re
 import os
-os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
-from sentence_transformers import SentenceTransformer
-from sklearn.cluster import AgglomerativeClustering
-from sklearn.metrics import silhouette_score
-import nltk
-from nltk.tokenize import sent_tokenize
-import threading
 from loguru import logger
 from utils.auto_device_selector import get_device
 from processor.converters.table_to_markdown import html_table_to_key_value
-#from .named_entity_recognition import append_entities_to_header  # 引入自动实体提取函数
+from .named_entity_recognition import append_entities_to_header  # 引入自动实体提取函数
+from .enhancer.semantic_splitter import semantic_chunking_with_auto_clusters
+from .enhancer.markdown_utils import infer_heading_level, get_title_path, extract_table_block, split_text_by_length_and_newline
 
-
-# 确保 punkt_tab 可用
-# 首先检测是否已存在punkt_tab模型
-# 如果加载失败，尝试下载
-try:
-    nltk.data.find('tokenizers/punkt_tab') # punkt_tab 是 NLTK 用于分句的模型
-except LookupError:
-    nltk.download('punkt_tab')
 """
 不论是word,pdf还是图片，最终都会被转换成markdown格式
 在这个模块中会把生成的中间markdown进行切分处理，使得其
@@ -83,177 +70,39 @@ def get_bge_sentence_transformer_singleton(model_id='BAAI/bge-small-zh-v1.5', mi
     """
     return SingletonSentenceTransformer(model_id=model_id, mirror=mirror)
 
-def split_sentences_chinese(text):
-    """
-    使用正则表达式按中文标点分句，同时保留句尾标点
-    """
-    # 1. (?<=[。！？])(?![”’"]) : 匹配标点符号，且后面不是引号
-    # 2. (?<=[。！？][”’"])    : 匹配标点符号后紧跟引号的组合
-    pattern = r'(?<=[。！？])(?![”’"])|(?<=[。！？][”’"])'
-    sentences = re.split(pattern, text)
-    return [s.strip() for s in sentences if s.strip()]
-
-def split_mixed_sentences(text: str) -> list[str]:
-    """
-    能同时处理中文和英文分句。
-    英文段落使用 NLTK；中文段落使用 zh regex 或 fallback。
-    """
-    chunks = re.split(r'(\n+)', text)  # 粗略按行分隔，并保留换行符
-    sentences = []
-
-    for ch in chunks:
-        if not ch.strip():
-            continue
-        # 英文段落判断：包含 [a-zA-Z] 且结束有 . ? ! 空格
-        if re.search(r'[A-Za-z]', ch):
-            parts = sent_tokenize(ch) # 使用 NLTK 分句
-            sentences.extend([p.strip() for p in parts if p.strip()])
-        # 中文段落判断：非英文段落就是中文段落
-        else:
-            # 优先用 zhon 精确匹配
-            sents = split_sentences_chinese(ch) # 使用比较简单的自定义中文分句
-            if sents:
-                sentences.extend([s.strip() for s in sents if s.strip()])
-            else:
-                parts = re.split(r'(?<=[。！？])', ch)
-                sentences.extend([p.strip() for p in parts if p.strip()])
-    return sentences
-
-
-def find_best_num_clusters(embeddings, min_clusters=2, max_clusters=10):
-    """
-    使用轮廓系数选择最佳簇数
-    实际效果不是很好，先放这里，待后续研究
-    """
-    best_score = -1
-    best_k = min_clusters
-
-    for k in range(min_clusters, min(max_clusters, len(embeddings)) + 1):
-        labels = AgglomerativeClustering(n_clusters=k, metric='cosine', linkage='average').fit_predict(embeddings)
-        if len(set(labels)) == 1:  # 全部在同一簇 → 跳过
-            continue
-        score = silhouette_score(embeddings, labels, metric='cosine')
-        if score > best_score:
-            best_score = score
-            best_k = k
-
-    return best_k
-
-
-def semantic_chunking_with_auto_clusters(text, max_chunk_size=500, model_id="BAAI/bge-small-zh-v1.5"):
-    """
-    自动选择最佳簇数的语义切分
-    """
-    # Step 1: 分句
-    sentences = split_mixed_sentences(text)
-    if len(sentences) < 2:
-        return [text.strip()]
-
-    # Step 2: 向量化
-    model = get_bge_sentence_transformer_singleton(model_id)
-    embeddings = model.encode(sentences)
-
-    # Step 3: 自动选择最佳簇数
-    # 这里使用最简单无脑的方法, 簇数 = 句子数//最大段落长度+1
-    best_k = max(len(sentences)//max_chunk_size,1)+1
-    # Step 4: 聚类
-    labels = AgglomerativeClustering(n_clusters=best_k, metric='cosine', linkage='average').fit_predict(embeddings)
-
-    # Step 5: 按聚类结果组合句子，并限制段落大小
-    chunks = []
-    current_chunk = ""
-    current_label = labels[0]
-
-    for sentence, label in zip(sentences, labels):
-        if label != current_label or len(current_chunk) + len(sentence) > max_chunk_size:
-            if current_chunk.strip():
-                chunks.append(current_chunk.strip())
-            current_chunk = sentence
-            current_label = label
-        else:
-            current_chunk += sentence
-
-    if current_chunk.strip():
-        chunks.append(current_chunk.strip())
-
-    return chunks
-
-def _infer_heading_level(title: str) -> int:
-    m = re.match(r'^\s*(\d+(?:\.\d+)*)[.)、]?\s*', title)
-    if m:
-        return max(1, min(len(m.group(1).split('.')), 6))
-    m_zh = re.match(r'^\s*[一二三四五六七八九十百千]+[、.]\s*', title)
-    if m_zh:
-        return 1
-    return 1
-
-def _get_title_path(stack: list[str]) -> str:
-    return '|'.join([t for t in stack if t])
-
-def split_text_by_length_and_newline(text: str, max_length: int) -> list[str]:
-    """
-    优先按换行符切分，如果单行超过max_length再进行语义切分。
-    尽可能合并短行以填充max_length。
-    """
-    lines = text.split('\n')
-    chunks = []
-    current_chunk_lines = []
-    current_chunk_len = 0
-    
-    for line in lines:
-        line_len = len(line)
-        
-        # 计算如果加入当前行后的总长度（包含换行符）
-        # 如果 current_chunk_lines 不为空，则需要加一个换行符，长度+1
-        added_len = line_len + (1 if current_chunk_lines else 0)
-        
-        # 1. 如果单行本身就超过 max_length
-        if line_len > max_length:
-            # 先把当前积累的内容flush掉
-            if current_chunk_lines:
-                chunks.append('\n'.join(current_chunk_lines))
-                current_chunk_lines = []
-                current_chunk_len = 0
-            
-            # 对超长行进行语义切分
-            sub_chunks = semantic_chunking_with_auto_clusters(line, max_chunk_size=max_length)
-            chunks.extend(sub_chunks)
-            
-        # 2. 如果加上当前行会超过 max_length
-        elif current_chunk_len + added_len > max_length:
-            chunks.append('\n'.join(current_chunk_lines))
-            current_chunk_lines = [line]
-            current_chunk_len = line_len
-            
-        # 3. 否则加入当前块
-        else:
-            current_chunk_lines.append(line)
-            current_chunk_len += added_len
-            
-    # 处理最后剩余的内容
-    if current_chunk_lines:
-        chunks.append('\n'.join(current_chunk_lines))
-        
-    return chunks
-
-
-def _flush_content(result, current_content, title_stack, max_length, special_element=None, allow_split=False) -> None:
+def _flush_content(
+    result: list, 
+    current_content: list, 
+    title_stack: list, 
+    max_length: int, 
+    special_element: str = None, 
+    allow_split: bool = False
+    ) -> None:
     if not current_content:
         return
+    # 合并当前所有的内容，使用换行符连接
     content = '\n'.join(current_content).strip()
+    # 如果合并后的内容为空，直接返回
     if not content:
         current_content.clear()
         return
+
+    # 从最深层级（H6）开始向上一层层查找，因为我们要找的是当前内容 最近 （最深）的那个父标题
+    # 如果这一层有标题，那么就使用i+1作为当前内容的层级（因为要使用这个level确定#号的数量，所以+1）
     level = next((i + 1 for i in range(5, -1, -1) if title_stack[i]), 1)
-    title_path = _get_title_path(title_stack)
-    
+    # 构建标题路径（使用这个函数在所有的元素之间添加|符号）
+    title_path = get_title_path(title_stack)
+    # 如果当前正在处理的是表格、列表、代码块、数学公式等特殊元素，
+    # 那么就不允许切分（因为这些元素的内容是连续的，不应该被切分）
     if special_element and not allow_split:
+        # 在这里直接构建标题，并把内容添加到结果列表中
         header = f"{'#' * level} {title_path}|{special_element}" if title_path else f"{'#' * level} {special_element}"
         result.extend([header, content, '-' * 10])
     else:
         # 如果允许切分（无论是普通文本还是特殊的allow_split元素）
         if len(content) > max_length:
-            chunks = semantic_chunking_with_auto_clusters(content, max_chunk_size=max_length)
+            # 使用层次化切分策略：先按段落分，再按行分，最后按语义分
+            chunks = split_text_by_length_and_newline(content, max_length)
             for idx, chunk in enumerate(chunks, 1):
                 # 构建基础标题
                 base_header = f"{'#' * level} {title_path}" if title_path else f"{'#' * level}"
@@ -264,6 +113,8 @@ def _flush_content(result, current_content, title_stack, max_length, special_ele
                     header = f"{base_header}|Part {idx}"
                 result.extend([header, chunk, '-' * 10])
         else:
+            # 如果长度没有超过max_length，那么就直接添加到结果列表中
+            # 以base_header作为标题,内容完整保留
             base_header = f"{'#' * level} {title_path}" if title_path else f"{'#' * level}"
             if special_element:
                 header = f"{base_header}|{special_element}"
@@ -274,73 +125,127 @@ def _flush_content(result, current_content, title_stack, max_length, special_ele
                 result.append(header)
                 result.append("")
             result.extend([content, '-' * 10])
+    # 作为临时变量，current_content已经没有作用了，所以清空
     current_content.clear()
 
 
-def _extract_table_block(tokens, i, original_lines):
-    token = tokens[i]
-    table_start = token.map[0] if token.map else 0
-    j = i + 1
-    while j < len(tokens) and tokens[j].type != 'table_close':
-        j += 1
-    if j < len(tokens):
-        end_token = tokens[j]
-        if end_token.map and end_token.map[1] is not None:
-            table_end = end_token.map[1]
-        else:
-            table_end = None
-            for k in range(j + 1, len(tokens)):
-                if tokens[k].map and tokens[k].map[0] is not None:
-                    table_end = tokens[k].map[0]
-                    break
-            if table_end is None:
-                table_end = table_start + 1
-                for line_idx in range(table_start, len(original_lines)):
-                    line = original_lines[line_idx].strip()
-                    if not line or not (line.startswith('|') or '|' in line):
-                        table_end = line_idx
-                        break
-    else:
-        table_end = table_start + 1
-        for line_idx in range(table_start, len(original_lines)):
-            line = original_lines[line_idx].strip()
-            if not line or not (line.startswith('|') or '|' in line):
-                table_end = line_idx
-                break
-    return j, '\n'.join(original_lines[table_start:table_end])
 
+
+def _handle_image_caption(tokens, i, result, current_content, title_stack, max_length):
+    """
+    Attempts to handle image + caption logic.
+    Returns (handled, new_i)
+    """
+    token = tokens[i]
+    if token.type != 'paragraph_open':
+        return False, i
+        
+    inline_token = tokens[i + 1]
+    if inline_token.type != 'inline':
+        return False, i
+        
+    content = inline_token.content.strip()
+    image_pattern = r'^!\[.*?\]\(.*?\)\s*$'
+    caption_pattern = r'^(?:Figure|图|Fig\.|表|Table)\s*[\d\w\.]+'
+
+    # Logic 1: Image and caption in the same paragraph
+    img_match = re.search(r'^(!\[.*?\]\(.*?\))', content)
+    if img_match:
+        rest = content[img_match.end():].strip()
+        if rest and re.match(caption_pattern, rest, re.IGNORECASE):
+            _flush_content(result, current_content, title_stack, max_length)
+            current_content.append(content)
+            caption_title = rest.split('\n')[0].strip()
+            _flush_content(result, current_content, title_stack, max_length, special_element=caption_title)
+            return True, i + 3
+
+    # Logic 2: Image in current paragraph, caption in next paragraph
+    if re.match(image_pattern, content):
+        next_p_idx = i + 3
+        if next_p_idx + 1 < len(tokens) and tokens[next_p_idx].type == 'paragraph_open':
+            next_inline = tokens[next_p_idx + 1]
+            if next_inline.type == 'inline':
+                next_content = next_inline.content.strip()
+                if re.match(caption_pattern, next_content, re.IGNORECASE):
+                    _flush_content(result, current_content, title_stack, max_length)
+                    current_content.append(content)
+                    current_content.append(next_content)
+                    _flush_content(result, current_content, title_stack, max_length, special_element=next_content)
+                    return True, i + 6
+
+    # Logic 3: Caption in current paragraph, image in previous paragraph (already in current_content)
+    if current_content and re.match(caption_pattern, content, re.IGNORECASE):
+        last_item = current_content[-1].strip()
+        if re.match(image_pattern, last_item):
+            image_tag = current_content.pop()
+            _flush_content(result, current_content, title_stack, max_length)
+            current_content.append(image_tag)
+            current_content.append(content)
+            _flush_content(result, current_content, title_stack, max_length, special_element=content)
+            return True, i + 3
+
+    return False, i
 
 def process_markdown(md_text: str, max_length: int = 500) -> str:
-    md = MarkdownIt('commonmark').enable('table')
-    md.use(dollarmath_plugin, allow_space=True, allow_digits=True)
-    tokens = md.parse(md_text)
-    original_lines = md_text.split('\n')
-    result = []
-    current_content = []
-    title_stack = [''] * 6
+    """
+    使用MarkdownIt解析Markdown文本，将其切分成多个部分，每个部分的长度不超过max_length。
+    单元为markdownit解析出来的token
+    然后依次遍历每个token，根据token的类型进行处理
+    1. 如果是标题，那么就把当前的内容（current_content）添加到结果列表中
+    2. 如果是表格、列表、代码块、数学公式等特殊元素，那么就不允许切分（因为这些元素的内容是连续的，不应该被切分）
+    3. 如果是普通的段落，那么就根据max_length切分内容，每个部分作为一个新的段落添加到结果列表中
 
+    """
+    # 初始化MarkdownIt解析器，开启表格解析功能
+    md = MarkdownIt('commonmark').enable('table')
+    # 开启数学公式解析插件，允许空格和数字
+    md.use(dollarmath_plugin, allow_space=True, allow_digits=True)
+    # 解析Markdown文本，得到token列表
+    tokens: list = md.parse(md_text)
+    # 将Markdown文本按行分割，得到原始行列表
+    original_lines: list = md_text.split('\n')
+    # 初始化结果列表，用于存储切分后的所有内容
+    result: list = []
+    # 初始化当前内容列表，用于存储当前处理的段落内容
+    # 当前内容达到max_length时，会被添加到结果列表中
+    current_content: list = []
+    # 初始化标题栈，用于存储当前的标题层级
+    title_stack: list = [''] * 6
+
+    # 遍历每个token
     i = 0
     while i < len(tokens):
         token = tokens[i]
+        # 遇到了标题类型的token
         if token.type == 'heading_open':
+            # 说明开始了一个新的章节，所以先把当前的内容添加到结果列表中,这里肯定是要开始新的段落的
             _flush_content(result, current_content, title_stack, max_length)
+            # 这里其实就是标题记号后面实际的标题内容
             inline_token = tokens[i + 1]
             if inline_token.type == 'inline':
                 full_title = inline_token.content.strip()
-                level = _infer_heading_level(full_title)
+                # 得到标题级别
+                level = infer_heading_level(full_title)
+                # 然后把标题插入对应的标题栈中
                 title_stack[level - 1] = full_title
                 for j in range(level, 6):
                     title_stack[j] = ''
             i += 3
             continue
+        # 遇到表格类型的token，需要特殊处理
         elif token.type == 'table_open':
             _flush_content(result, current_content, title_stack, max_length)
-            j, table_content = _extract_table_block(tokens, i, original_lines)
+            j, table_content = extract_table_block(tokens, i, original_lines)
             current_content.append(table_content)
             _flush_content(result, current_content, title_stack, max_length, special_element='Table')
             i = j + 1 if j < len(tokens) else len(tokens)
             continue
+        # 遇到段落类型的token
         elif token.type == 'paragraph_open':
+            handled, new_i = _handle_image_caption(tokens, i, result, current_content, title_stack, max_length)
+            if handled:
+                i = new_i
+                continue
             inline_token = tokens[i + 1]
             if inline_token.type == 'inline':
                 current_content.append(inline_token.content.strip())
