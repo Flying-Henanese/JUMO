@@ -129,10 +129,10 @@ def find_best_num_clusters(embeddings, min_clusters=2, max_clusters=10):
     best_k = min_clusters
 
     for k in range(min_clusters, min(max_clusters, len(embeddings)) + 1):
-        labels = AgglomerativeClustering(n_clusters=k).fit_predict(embeddings)
+        labels = AgglomerativeClustering(n_clusters=k, metric='cosine', linkage='average').fit_predict(embeddings)
         if len(set(labels)) == 1:  # 全部在同一簇 → 跳过
             continue
-        score = silhouette_score(embeddings, labels)
+        score = silhouette_score(embeddings, labels, metric='cosine')
         if score > best_score:
             best_score = score
             best_k = k
@@ -157,7 +157,7 @@ def semantic_chunking_with_auto_clusters(text, max_chunk_size=500, model_id="BAA
     # 这里使用最简单无脑的方法, 簇数 = 句子数//最大段落长度+1
     best_k = max(len(sentences)//max_chunk_size,1)+1
     # Step 4: 聚类
-    labels = AgglomerativeClustering(n_clusters=best_k).fit_predict(embeddings)
+    labels = AgglomerativeClustering(n_clusters=best_k, metric='cosine', linkage='average').fit_predict(embeddings)
 
     # Step 5: 按聚类结果组合句子，并限制段落大小
     chunks = []
