@@ -15,6 +15,7 @@ from const.task_status_enum import TaskStatus
 from startup import task_repository,minio_tool
 from fastapi import UploadFile, File
 from typing import List
+import json
 # 为了让接口返回压缩包
 import zipfile
 from loguru import logger
@@ -270,10 +271,16 @@ def download_task_files(task_id: str):
         if not task:
             raise HTTPException(status_code=404, detail="任务不存在")
         
-        if not task.output_info:
-            raise HTTPException(status_code=400, detail="任务尚未完成")
+        if not task.output_info or task.status != TaskStatus.COMPLETED:
+            raise HTTPException(status_code=400, detail=f"任务尚未完成或已失败 (当前状态: {task.status})")
         
-        output_info = task.output_info
+        try:
+            output_info = json.loads(task.output_info) if isinstance(task.output_info, str) else task.output_info
+            if not isinstance(output_info, dict):
+                raise ValueError("output_info is not a dictionary")
+        except Exception as e:
+            logger.error(f"解析任务输出信息失败: {str(e)}, output_info: {task.output_info}")
+            raise HTTPException(status_code=500, detail="任务输出信息格式错误，无法下载")
 
         zip_buffer = BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:

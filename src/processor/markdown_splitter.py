@@ -41,7 +41,7 @@ from processor.converters.table_to_markdown import html_table_to_key_value
 from .named_entity_recognition import append_entities_to_header  # 引入自动实体提取函数
 from .enhancer.semantic_splitter import semantic_chunking_with_auto_clusters
 from .enhancer.markdown_utils import infer_heading_level, get_title_path, extract_table_block, split_text_by_length_and_newline
-
+import threading
 """
 不论是word,pdf还是图片，最终都会被转换成markdown格式
 在这个模块中会把生成的中间markdown进行切分处理，使得其

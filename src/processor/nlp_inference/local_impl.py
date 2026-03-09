@@ -14,7 +14,7 @@ from loguru import logger
 from .interfaces import EmbeddingClient, NERClient
 from ..named_entity_recognition import Entity
 
-DEVICE_MODE = os.getenv("DEFAULT_CUDA_DEVICE", "mps")
+DEVICE_MODE = os.getenv("DEFAULT_CUDA_DEVICE", "npu")
 
 # 预设好NER模型的名称
 MODEL_NAME = "uer/roberta-base-finetuned-cluener2020-chinese"
