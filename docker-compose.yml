@@ -10,6 +10,7 @@ services:
       # 这是整个体系中唯一需要暴露的端口
       - "${API_SERVICE_PORT:-5116}:${API_SERVICE_PORT:-5116}"   
     environment:
+      - HF_HUB_DISABLE_XET=1
       - API_SERVICE_PORT=${API_SERVICE_PORT:-5116}
       - PYTHON_PATH=${PYTHON_PATH:-/app/.venv/bin/python}
       - PYTHONPATH=/app/src
@@ -21,7 +22,11 @@ services:
       - TASK_NAME_PROCESS_PDF=${TASK_NAME_PROCESS_PDF:-process_pdf}
       - CELERY_REDIS_DB_BROKER=${CELERY_REDIS_DB_BROKER:-0}
       - CELERY_REDIS_DB_BACKEND=${CELERY_REDIS_DB_BACKEND:-1}
-
+      # 有一部分也需要推理，所以在这里加上
+      - INFERENCE_DEVICES=${INFERENCE_DEVICES:-0}
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      - ${HOME}/.cache/modelscope:/root/.cache/modelscope
+      - ${HOME}/.cache/vllm:/root/.cache/vllm
       # MinIO 配置
       - MINIO_ENDPOINT=${MINIO_ENDPOINT}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
@@ -40,6 +45,14 @@ services:
       # 否则每个容器都会在自己的目录下创建一个数据库文件
       - ./database:/app/database
       - ${HOME}/nltk_data:/root/nltk_data
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
     depends_on:
       # 一切组件都启动之后才可以启动网关服务
@@ -68,6 +81,7 @@ services:
 
     environment:
       # 模型与下载源配置
+      - HF_HUB_DISABLE_XET=1
       - MODEL=${MODEL:-opendatalab/MinerU2.5-2509-1.2B}
       - PYTHON_PATH=${PYTHON_PATH:-/app/.venv/bin/python}
       - PYTHONPATH=/app/src
@@ -148,6 +162,7 @@ services:
     restart: unless-stopped
 
     environment:
+      - HF_HUB_DISABLE_XET=1
       - MODEL=${MODEL:-opendatalab/MinerU2.5-2509-1.2B}
       - PYTHON_PATH=${PYTHON_PATH:-/app/.venv/bin/python}
       - PYTHONPATH=/app/src

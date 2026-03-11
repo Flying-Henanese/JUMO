@@ -9,7 +9,7 @@ if __name__ == "__main__":
     from startup import *
     import uvicorn
     from route.pdf_route import router as pdf_router
-    from route.documents_route import router as documents_router
+    # from route.documents_route import router as documents_router
     from route.content_searching_route import router as content_searching_router
     # from route.knowledgebase_api_route import router as knowledgebase_api_route
     from fastapi import FastAPI
@@ -17,7 +17,7 @@ if __name__ == "__main__":
     # from processor.warmup.vlm_predictor_warmup import predictor
     app = FastAPI() # 启动服务
     app.include_router(pdf_router)
-    app.include_router(documents_router)
+    # app.include_router(documents_router)
     app.include_router(content_searching_router)
     # app.include_router(knowledgebase_api_route)
     port_num = int(os.getenv("API_SERVICE_PORT", 5116))
