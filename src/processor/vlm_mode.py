@@ -67,6 +67,15 @@ class PDFProcessor:
     # @with_gpu_selection
     def _sync_process_pdf(self, current_task: Task):
         try:
+            oss_info = None
+            if getattr(current_task, 'oss_endpoint', None) and getattr(current_task, 'oss_access_key', None) and getattr(current_task, 'oss_secret_key', None):
+                oss_info = {
+                    'endpoint': current_task.oss_endpoint,
+                    'access_key': current_task.oss_access_key,
+                    'secret_key': current_task.oss_secret_key,
+                    'secure': bool(current_task.oss_secure)
+                }
+
             extension = os.path.splitext(current_task.object_key)[-1].lower()
             if extension not in {*PDF_EXTENSIONS, *IMAGE_EXTENSIONS, *OFFICE_EXTENSIONS,*EXCEL_EXTENTIONS}:
                 raise HTTPException(status_code=400, detail="不支持的文件类型")

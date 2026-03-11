@@ -65,13 +65,23 @@ class PDFProcessor:
     # @with_gpu_selection
     def _sync_process_pdf(self, current_task: Task):
         try:
+            oss_info = None
+            if getattr(current_task, 'oss_endpoint', None) and getattr(current_task, 'oss_access_key', None) and getattr(current_task, 'oss_secret_key', None):
+                oss_info = {
+                    'endpoint': current_task.oss_endpoint,
+                    'access_key': current_task.oss_access_key,
+                    'secret_key': current_task.oss_secret_key,
+                    'secure': bool(current_task.oss_secure)
+                }
+
             extension = os.path.splitext(current_task.object_key)[-1].lower()
             if extension not in {*PDF_EXTENSIONS, *IMAGE_EXTENSIONS, *OFFICE_EXTENSIONS}:
                 raise HTTPException(status_code=400, detail="不支持的文件类型")
 
             file_bytes = self.minio_tool.get_file_byte(
                 bucket_name=current_task.bucket_name,
-                object_name=current_task.object_key
+                object_name=current_task.object_key,
+                oss_info=oss_info
             )
             # 为了支持图片文件，需要先转换为 PDF
             if extension in IMAGE_EXTENSIONS:
@@ -138,7 +148,8 @@ class PDFProcessor:
                                     bucket_name=current_task.output_bucket,
                                     object_name=remote_path,
                                     file_bytes=img_f.read(),
-                                    content_type=f"image/{file.split('.')[-1]}"
+                                    content_type=f"image/{file.split('.')[-1]}",
+                                    oss_info=oss_info
                                 )
                                 images_list.append(remote_path)
 
@@ -149,7 +160,8 @@ class PDFProcessor:
                     bucket_name=current_task.output_bucket,
                     object_name=f"{current_task.task_id}/{name_without_ext}.md",
                     file_bytes=clean_md.encode("utf-8"),
-                    content_type="text/markdown"
+                    content_type="text/markdown",
+                    oss_info=oss_info
                 )
                 
                 # 切分处理后的markdown内容
@@ -158,7 +170,8 @@ class PDFProcessor:
                     bucket_name=current_task.output_bucket,
                     object_name=f"{current_task.task_id}/{name_without_ext}_splitted.md",
                     file_bytes=splitted_markdown.encode("utf-8"),
-                    content_type="text/markdown"
+                    content_type="text/markdown",
+                    oss_info=oss_info
                 )
 
                 # content_list 内容
@@ -168,7 +181,8 @@ class PDFProcessor:
                     bucket_name=current_task.output_bucket,
                     object_name=f"{current_task.task_id}/{name_without_ext}_content_list.json",
                     file_bytes=file_content.encode("utf-8"),
-                    content_type="application/json"
+                    content_type="application/json",
+                    oss_info=oss_info
                 )
 
                 # middle_json 内容
@@ -177,7 +191,8 @@ class PDFProcessor:
                     bucket_name=current_task.output_bucket,
                     object_name=f"{current_task.task_id}/{name_without_ext}_middle.json",
                     file_bytes=middle_json_content.encode("utf-8"),
-                    content_type="application/json"
+                    content_type="application/json",
+                    oss_info=oss_info
                 )
 
                 # 写入任务 output_info

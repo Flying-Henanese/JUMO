@@ -5,10 +5,11 @@ import io
 from loguru import logger
 from minio.error import S3Error
 from threading import Lock
+from typing import Optional, Dict, Any
 
 class MinioConnection:
     '''
-    单例模式下的Minio连接
+    单例模式下的Minio连接池
     在这里定义统一的minio操作
     包括：
     - 上传文件
@@ -24,10 +25,12 @@ class MinioConnection:
             with cls._lock:
                 if not cls._instance:
                     cls._instance = super().__new__(cls)
-                    cls._instance._init_client()
+                    cls._instance._init_pool()
         return cls._instance
 
-    def _init_client(self):
+    def _init_pool(self):
+        self._clients: Dict[str, Minio] = {}
+        
         endpoint = os.getenv('MINIO_ENDPOINT')
         access_key = os.getenv('MINIO_ACCESS_KEY')
         secret_key = os.getenv('MINIO_SECRET_KEY')
@@ -36,19 +39,19 @@ class MinioConnection:
         if not all([endpoint, access_key, secret_key]):
             raise RuntimeError("MinIO环境变量配置不完整，请检查 MINIO_ENDPOINT、ACCESS_KEY、SECRET_KEY、BUCKET_NAME")
 
-        self.client = Minio(
+        default_client = Minio(
             endpoint=endpoint,
             access_key=access_key,
             secret_key=secret_key,
             secure=secure
         )
-        logger.info(f"初始化Minio连接: endpoint={endpoint}")
+        self._clients['default'] = default_client
+        logger.info(f"初始化默认Minio连接: endpoint={endpoint}")
         
         # 检查并创建默认的bucket
-        # 确保用于上传文件的bucket存在，如果不存在则创建
-        self._ensure_default_buckets()
+        self._ensure_default_buckets(default_client)
 
-    def _ensure_default_buckets(self):
+    def _ensure_default_buckets(self, client: Minio):
         """防御性编程，确保默认的用于上传分析文件和存储桶存在，如果不存在则创建"""
         default_buckets = [
             os.getenv('UPLOAD_BUCKET', 'uploads'),    # 上传文件bucket
@@ -57,22 +60,56 @@ class MinioConnection:
         
         for bucket_name in default_buckets:
             try:
-                if not self.client.bucket_exists(bucket_name):
-                    self.client.make_bucket(bucket_name=bucket_name)
+                if not client.bucket_exists(bucket_name):
+                    client.make_bucket(bucket_name=bucket_name)
                     logger.info(f"创建默认存储桶: {bucket_name}")
                 else:
                     logger.debug(f"存储桶已存在: {bucket_name}")
             except Exception as e:
                 logger.error(f"检查/创建默认存储桶失败: {bucket_name}, 错误: {e}")
-                # 继续尝试其他bucket，不中断初始化
                 continue
 
-    def upload_file_by_path(self, object_name: str, bucket_name:str, file_path: str) -> bool:
+    def get_client(self, oss_info: Optional[Dict[str, Any]] = None) -> Minio:
+        """
+        获取 Minio 客户端。如果有自定义 oss_info 则优先使用，否则使用默认客户端。
+        oss_info 包含：endpoint, access_key, secret_key, secure
+        """
+        if not oss_info:
+            return self._clients.get('default')
+        
+        endpoint = oss_info.get('endpoint')
+        access_key = oss_info.get('access_key')
+        secret_key = oss_info.get('secret_key')
+        secure = oss_info.get('secure', False)
+        
+        if not all([endpoint, access_key, secret_key]):
+            logger.warning("oss_info 提供的参数不完整，退回使用默认 Minio 连接")
+            return self._clients.get('default')
+
+        # 使用参数构造唯一的连接池 key
+        pool_key = f"{endpoint}_{access_key}_{secure}"
+        
+        if pool_key not in self._clients:
+            with self._lock:
+                if pool_key not in self._clients:
+                    logger.info(f"创建新的 Minio 连接: endpoint={endpoint}")
+                    new_client = Minio(
+                        endpoint=endpoint,
+                        access_key=access_key,
+                        secret_key=secret_key,
+                        secure=secure
+                    )
+                    self._clients[pool_key] = new_client
+        
+        return self._clients[pool_key]
+
+    def upload_file_by_path(self, object_name: str, bucket_name:str, file_path: str, oss_info: Optional[Dict[str, Any]] = None) -> bool:
         """
         通过文件路径上传文件到OSS成为一个文件
         """
+        client = self.get_client(oss_info)
         try:
-            self.client.fput_object(
+            client.fput_object(
                 bucket_name=bucket_name,
                 object_name=object_name,
                 file_path=file_path
@@ -87,7 +124,9 @@ class MinioConnection:
         object_name: str, 
         bucket_name: str, 
         file_bytes: bytes,
-        content_type: str) -> bool:
+        content_type: str,
+        oss_info: Optional[Dict[str, Any]] = None) -> bool:
+        client = self.get_client(oss_info)
         try:
             """
             上传文件字节流到OSS成为一个文件
@@ -98,7 +137,7 @@ class MinioConnection:
             elif not isinstance(file_bytes, bytes):
                 raise ValueError(f"file_bytes 必须是 bytes 或 str 类型，当前类型: {type(file_bytes)}")
             
-            self.client.put_object(
+            client.put_object(
                 bucket_name=bucket_name,
                 object_name=object_name,
                 data=io.BytesIO(file_bytes),
@@ -111,13 +150,14 @@ class MinioConnection:
             logger.error(f"文件上传失败: bucket:{bucket_name};object_name:{object_name}, 异常：{e}")
             return False
 
-    def download_file(self, object_name: str, bucket_name:str, file_path: str) -> bool:
+    def download_file(self, object_name: str, bucket_name:str, file_path: str, oss_info: Optional[Dict[str, Any]] = None) -> bool:
         """
         下载文件到file_path（调用者指定一个文件路径）
         """
+        client = self.get_client(oss_info)
         success = False
         try:
-            self.client.fget_object(
+            client.fget_object(
                 bucket_name=bucket_name,
                 object_name=object_name,
                 file_path=file_path
@@ -129,14 +169,15 @@ class MinioConnection:
         finally:    
             return success
 
-    def delete_file(self, object_name: str) -> bool:
+    def delete_file(self, object_name: str, bucket_name: str, oss_info: Optional[Dict[str, Any]] = None) -> bool:
         """
         删除文件
         """
+        client = self.get_client(oss_info)
         success = False
         try:
-            self.client.remove_object(
-                bucket_name=self.bucket_name,
+            client.remove_object(
+                bucket_name=bucket_name,
                 object_name=object_name
             )
             success = True
@@ -147,12 +188,13 @@ class MinioConnection:
             raise(f'删除文件失败: {e}')
             return success
 
-    def get_file_byte(self,object_name: str,bucket_name:str) -> bytes:
+    def get_file_byte(self,object_name: str,bucket_name:str, oss_info: Optional[Dict[str, Any]] = None) -> bytes:
         """
         获取文件的字节流
         """
+        client = self.get_client(oss_info)
         try:
-            response = self.client.get_object(
+            response = client.get_object(
                 bucket_name=bucket_name,
                 object_name=object_name
             )
@@ -161,12 +203,13 @@ class MinioConnection:
             logger.error(f'获取文件失败: {object_name}')
             raise(f'获取文件失败: {e}')
 
-    def file_exists(self,object_name: str,bucket_name:str) -> bool:
+    def file_exists(self,object_name: str,bucket_name:str, oss_info: Optional[Dict[str, Any]] = None) -> bool:
         """
         检查文件是否存在
         """
+        client = self.get_client(oss_info)
         try:
-            self.client.stat_object(bucket_name,object_name)
+            client.stat_object(bucket_name,object_name)
             return True
         except S3Error as e:
             if "NoSuchKey" in str(e):
@@ -174,19 +217,20 @@ class MinioConnection:
             logger.error(f"文件不存在: {e}, object_name: {object_name}, bucket_name: {bucket_name}")
             raise HTTPException(status_code=404, detail=f"文件不存在: {e}")
     
-    def bucket_exists(self, bucket_name: str) -> bool:
+    def bucket_exists(self, bucket_name: str, oss_info: Optional[Dict[str, Any]] = None) -> bool:
         """
         检查存储桶是否存在
         :param bucket_name: 存储桶名称
         :return: 存在返回True，否则返回False
         """
+        client = self.get_client(oss_info)
         try:
-            return self.client.bucket_exists(bucket_name)
+            return client.bucket_exists(bucket_name)
         except Exception as e:
             logger.error(f"检查存储桶失败: {bucket_name}, 异常: {e}")
             return False
 
-    def list_objects(self, bucket_name: str, prefix: str = "", recursive: bool = True) -> list:
+    def list_objects(self, bucket_name: str, prefix: str = "", recursive: bool = True, oss_info: Optional[Dict[str, Any]] = None) -> list:
         """
         列出存储桶中的对象，支持前缀过滤
         :param bucket_name: 存储桶名称
@@ -194,14 +238,15 @@ class MinioConnection:
         :param recursive: 是否递归搜索
         :return: 对象名称列表
         """
+        client = self.get_client(oss_info)
         try:
-            objects = self.client.list_objects(bucket_name, prefix=prefix, recursive=recursive)
+            objects = client.list_objects(bucket_name, prefix=prefix, recursive=recursive)
             return [obj.object_name for obj in objects]
         except Exception as e:
             logger.error(f"列出对象失败: bucket={bucket_name}, prefix={prefix}, 异常: {e}")
             return []
 
-    def find_files_by_pattern(self, bucket_name: str, pattern: str) -> list:
+    def find_files_by_pattern(self, bucket_name: str, pattern: str, oss_info: Optional[Dict[str, Any]] = None) -> list:
         """
         根据通配符模式查找文件
         :param bucket_name: 存储桶名称
@@ -216,7 +261,7 @@ class MinioConnection:
         else:
             prefix = ""
         
-        all_objects = self.list_objects(bucket_name, prefix=prefix)
+        all_objects = self.list_objects(bucket_name, prefix=prefix, oss_info=oss_info)
         matching_files = fnmatch.filter(all_objects, pattern)
         
         return matching_files

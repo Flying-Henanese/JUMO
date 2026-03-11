@@ -79,6 +79,11 @@ class Task(Base):
     finish_time = Column(DateTime)
     # 状态（替代 ActiveTask 表）
     status = Column(String, nullable=False, default=TaskStatus.QUEUED)
+    # OSS信息
+    oss_endpoint = Column(String, nullable=True)
+    oss_access_key = Column(String, nullable=True)
+    oss_secret_key = Column(String, nullable=True)
+    oss_secure = Column(Integer, nullable=True)
 
     def __repr__(self):
         return f'''Task(id={self.id}, task_id={self.task_id}, bucket_name={self.bucket_name}, object_key={self.object_key}, output_bucket={self.output_bucket}, ocr_enabled={self.ocr_enabled}, table_enabled={self.table_enabled}, inline_formula_enabled={self.inline_formula_enabled}, ocr_lang={self.ocr_lang}, output_info={self.output_info}, create_time={self.create_time}, finish_time={self.finish_time})'''

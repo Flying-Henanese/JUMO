@@ -119,13 +119,26 @@ def analyze_pdf(
     table_enabled: bool = False,
     formula_enabled: bool = False,
     inline_formula_enabled: bool = True,
-    ocr_lang: OCRLanguage = OCRLanguage.get_default()
+    ocr_lang: OCRLanguage = OCRLanguage.get_default(),
+    oss_endpoint: str = None,
+    oss_access_key: str = None,
+    oss_secret_key: str = None,
+    oss_secure: bool = False
 ):
     """
     分析PDF文件的接口（移除 ActiveTask 引用，保留本地 BackgroundTasks）
     """
+    oss_info = None
+    if oss_endpoint and oss_access_key and oss_secret_key:
+        oss_info = {
+            'endpoint': oss_endpoint,
+            'access_key': oss_access_key,
+            'secret_key': oss_secret_key,
+            'secure': oss_secure
+        }
+
     try:
-        minio_tool.file_exists(bucket_name=bucket_name, object_name=pdf_path)
+        minio_tool.file_exists(bucket_name=bucket_name, object_name=pdf_path, oss_info=oss_info)
     except S3Error:
         raise HTTPException(status_code=404, detail="PDF文件未找到")
 
@@ -146,6 +159,10 @@ def analyze_pdf(
             create_time=datetime.now(),
             finish_time=None,
             status=TaskStatus.QUEUED,
+            oss_endpoint=oss_endpoint,
+            oss_access_key=oss_access_key,
+            oss_secret_key=oss_secret_key,
+            oss_secure=1 if oss_secure else 0
         )
 
 
