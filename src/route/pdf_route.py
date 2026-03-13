@@ -137,6 +137,9 @@ def analyze_pdf(
             'secure': oss_secure
         }
 
+        if not minio_tool.check_connection(oss_info):
+            raise HTTPException(status_code=400, detail="提供的OSS配置无法连接，请检查endpoint, access_key, secret_key是否正确")
+
     try:
         minio_tool.file_exists(bucket_name=bucket_name, object_name=pdf_path, oss_info=oss_info)
     except S3Error:

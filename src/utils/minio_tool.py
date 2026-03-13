@@ -6,6 +6,8 @@ from loguru import logger
 from minio.error import S3Error
 from threading import Lock
 from typing import Optional, Dict, Any
+from collections import OrderedDict
+import urllib3
 
 class MinioConnection:
     '''
@@ -29,7 +31,8 @@ class MinioConnection:
         return cls._instance
 
     def _init_pool(self):
-        self._clients: Dict[str, Minio] = {}
+        self._clients: OrderedDict[str, Minio] = OrderedDict()
+        self._max_pool_size = int(os.getenv('MINIO_CONNECTION_POOL_SIZE', 20))
         
         endpoint = os.getenv('MINIO_ENDPOINT')
         access_key = os.getenv('MINIO_ACCESS_KEY')
@@ -45,7 +48,7 @@ class MinioConnection:
             secret_key=secret_key,
             secure=secure
         )
-        self._clients['default'] = default_client
+        self._default_client = default_client
         logger.info(f"初始化默认Minio连接: endpoint={endpoint}")
         
         # 检查并创建默认的bucket
@@ -75,7 +78,7 @@ class MinioConnection:
         oss_info 包含：endpoint, access_key, secret_key, secure
         """
         if not oss_info:
-            return self._clients.get('default')
+            return self._default_client
         
         endpoint = oss_info.get('endpoint')
         access_key = oss_info.get('access_key')
@@ -84,24 +87,58 @@ class MinioConnection:
         
         if not all([endpoint, access_key, secret_key]):
             logger.warning("oss_info 提供的参数不完整，退回使用默认 Minio 连接")
-            return self._clients.get('default')
+            return self._default_client
 
         # 使用参数构造唯一的连接池 key
         pool_key = f"{endpoint}_{access_key}_{secure}"
         
-        if pool_key not in self._clients:
-            with self._lock:
-                if pool_key not in self._clients:
-                    logger.info(f"创建新的 Minio 连接: endpoint={endpoint}")
-                    new_client = Minio(
-                        endpoint=endpoint,
-                        access_key=access_key,
-                        secret_key=secret_key,
-                        secure=secure
-                    )
-                    self._clients[pool_key] = new_client
+        with self._lock:
+            if pool_key in self._clients:
+                self._clients.move_to_end(pool_key)
+                return self._clients[pool_key]
+
+            # 如果连接池已满，淘汰最久未使用的连接
+            if len(self._clients) >= self._max_pool_size:
+                removed_key, _ = self._clients.popitem(last=False)
+                logger.info(f"Minio连接池已满(max={self._max_pool_size})，淘汰最久未使用的连接: {removed_key}")
+
+            logger.info(f"创建新的 Minio 连接: endpoint={endpoint}")
+
+            # 设置连接超时, 防止长时间等待
+            http_client = urllib3.PoolManager(
+                timeout=urllib3.Timeout(connect=5.0, read=60.0),
+                retries=urllib3.Retry(
+                    total=3,
+                    backoff_factor=0.2,
+                    status_forcelist=[500, 502, 503, 504]
+                )
+            )
+
+            new_client = Minio(
+                endpoint=endpoint,
+                access_key=access_key,
+                secret_key=secret_key,
+                secure=secure,
+                http_client=http_client
+            )
+            self._clients[pool_key] = new_client
+            return new_client
+
+    def check_connection(self, oss_info: Dict[str, Any]) -> bool:
+        """
+        检查OSS连接是否可用
+        """
+        if not oss_info:
+            return True
         
-        return self._clients[pool_key]
+        client = self.get_client(oss_info)
+        try:
+            # 尝试列出存储桶以验证连接
+            client.list_buckets()
+            return True
+        except Exception as e:
+            logger.error(f"OSS连接检查失败: {e}")
+            return False
 
     def upload_file_by_path(self, object_name: str, bucket_name:str, file_path: str, oss_info: Optional[Dict[str, Any]] = None) -> bool:
         """
@@ -155,19 +192,16 @@ class MinioConnection:
         下载文件到file_path（调用者指定一个文件路径）
         """
         client = self.get_client(oss_info)
-        success = False
         try:
             client.fget_object(
                 bucket_name=bucket_name,
                 object_name=object_name,
                 file_path=file_path
             )
-            success = True
+            return True
         except Exception as e:
             logger.error(f"文件下载失败: {e}")
-            raise(f"Download failed: {e}")
-        finally:    
-            return success
+            raise RuntimeError(f"Download failed: {e}") from e
 
     def delete_file(self, object_name: str, bucket_name: str, oss_info: Optional[Dict[str, Any]] = None) -> bool:
         """

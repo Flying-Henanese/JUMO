@@ -98,4 +98,5 @@ def get_env_kv_string_for_device(device_id: str) -> str:
     k, v = next(iter(env_vars.items()))
     return f"{k}={v}"
 
-
+if __name__ == "__main__":
+    print(get_device())

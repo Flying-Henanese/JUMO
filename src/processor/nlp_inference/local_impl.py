@@ -11,10 +11,11 @@ from transformers.modeling_utils import PreTrainedModel
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from loguru import logger
 
+from utils.auto_device_selector import get_device
 from .interfaces import EmbeddingClient, NERClient
 from ..named_entity_recognition import Entity
 
-DEVICE_MODE = os.getenv("DEFAULT_CUDA_DEVICE", "npu")
+DEVICE_MODE = get_device()
 
 # 预设好NER模型的名称
 MODEL_NAME = "uer/roberta-base-finetuned-cluener2020-chinese"
@@ -45,19 +46,7 @@ class LocalNERClient(NERClient):
         def _get_optimal_device(self, device: Optional[str] = None) -> str:
             if device:
                 return device
-            device_mode = os.getenv("DEVICE_MODE", "auto").split(":")[0].lower()
-            if device_mode == "auto":
-                if hasattr(torch, 'cuda') and torch.cuda.is_available(): # robust check
-                    device = "cuda"
-                elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-                    device = "mps"
-                elif hasattr(torch, 'npu') and torch.npu.is_available():
-                    device = "npu"
-                else:
-                    device = "cpu"
-            else:
-                device = device_mode if device_mode in ["mps", "cuda", "npu", "cpu"] else "cpu"
-            return device
+            return get_device()
         
         def _load_model(self):
             try:
@@ -70,9 +59,18 @@ class LocalNERClient(NERClient):
                     except Exception as e:
                         logger.warning(f"无法将模型移动到 {self.device}，回退到CPU: {e}")
                         self.device = "cpu"
+                # 对于 CUDA，pipeline 可以接受设备索引
+                # 对于 NPU/MPS，由于已经在上面使用了 .to(device)，这里 device 传 -1 让 pipeline 使用模型所在设备即可
+                pipeline_device = -1
+                if self.device.startswith("cuda"):
+                    try:
+                        pipeline_device = int(self.device.split(":")[-1]) if ":" in self.device else 0
+                    except ValueError:
+                        pipeline_device = 0
+
                 self.ner_pipeline = pipeline(
                     "ner", model=self.model, tokenizer=self.tokenizer, 
-                    device=0 if self.device == "cuda" else -1, 
+                    device=pipeline_device, 
                     aggregation_strategy="simple"
                 )
                 logger.info("NER模型加载完成")
@@ -224,14 +222,22 @@ class LocalEmbeddingClient(EmbeddingClient):
     _model_instance = None
     _lock = threading.Lock()
 
-    def __init__(self, model_id='BAAI/bge-small-zh-v1.5', mirror=True, device=DEVICE_MODE):
+    def __init__(self, model_id='BAAI/bge-small-zh-v1.5', mirror=True, device=None):
+        if device is None:
+            device = DEVICE_MODE
+            
         if LocalEmbeddingClient._model_instance is None:
             with LocalEmbeddingClient._lock:
                 if LocalEmbeddingClient._model_instance is None:
                     print(f"正在通过{os.getenv('HF_ENDPOINT')}加载模型：{model_id}（mirror={mirror}）,device={device}")
-                    LocalEmbeddingClient._model_instance = SentenceTransformer(model_id, device=f'{DEVICE_MODE}')
+                    LocalEmbeddingClient._model_instance = SentenceTransformer(model_id, device=device)
                     print("模型加载完成。")
         self.model = LocalEmbeddingClient._model_instance
 
     def encode(self, sentences: Union[str, List[str]], **kwargs) -> Union[List[float], List[List[float]], np.ndarray]:
         return self.model.encode(sentences, **kwargs)
+
+
+if __name__ == "__main__":
+    client = LocalEmbeddingClient()
+    print(client.encode("你好"))
