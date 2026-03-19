@@ -237,6 +237,11 @@ class LocalEmbeddingClient(EmbeddingClient):
     def encode(self, sentences: Union[str, List[str]], **kwargs) -> Union[List[float], List[List[float]], np.ndarray]:
         return self.model.encode(sentences, **kwargs)
 
+    def get_token_count(self, text: str) -> int:
+        if not text:
+            return 0
+        return len(self.model.tokenizer.encode(text, add_special_tokens=False))
+
 
 if __name__ == "__main__":
     client = LocalEmbeddingClient()
