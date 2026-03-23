@@ -1,5 +1,6 @@
 import re
 from .semantic_splitter import semantic_chunking_with_auto_clusters
+from processor.nlp_inference.factory import InferenceFactory
 
 def infer_heading_level(title: str) -> int:
     """
@@ -105,6 +106,7 @@ def extract_table_block(tokens, i, original_lines):
 def split_text_by_length_and_newline(text: str, max_length: int) -> list[str]:
     """
     层次化文本切分策略：先按段落分，再按行分，最后按语义分。
+    现在的切分阈值 max_length 是以 Token 数量为准。
 
     该函数采用三层切分策略，确保文本的语义完整性：
     1. 第一层：按空行切分成段落（保持段落完整性）
@@ -113,30 +115,13 @@ def split_text_by_length_and_newline(text: str, max_length: int) -> list[str]:
 
     参数:
         text (str): 待切分的文本内容
-        max_length (int): 每个chunk的最大长度
+        max_length (int): 每个chunk的最大 Token 数量
 
     返回:
         list[str]: 切分后的文本块列表
-
-    切分逻辑:
-        1. 按空行切分：使用 '\n\n' 作为分隔符，将文本分成多个段落
-        2. 对每个段落：
-           - 如果段落长度 <= max_length，直接作为一个chunk
-           - 如果段落长度 > max_length，尝试按行切分
-        3. 对超长行：
-           - 如果单行长度 <= max_length，作为一个chunk
-           - 如果单行长度 > max_length，使用语义切分
-
-    优势:
-        - 优先保持段落完整性（适合引用文献等结构化内容）
-        - 次优保持行完整性（适合列表项等）
-        - 最后才使用语义切分（适合长段落）
-
-    示例:
-        >>> text = "Para 1 line 1\nPara 1 line 2\n\nPara 2 line 1\nPara 2 line 2"
-        >>> chunks = split_text_by_length_and_newline(text, max_length=100)
     """
     chunks = []
+    client = InferenceFactory.get_embedding_client()
     
     # 第一层：按空行切分成段落
     paragraphs = text.split('\n\n')
@@ -146,46 +131,50 @@ def split_text_by_length_and_newline(text: str, max_length: int) -> list[str]:
         if not paragraph:
             continue
         
-        # 如果段落本身不超过max_length，直接作为一个chunk
-        if len(paragraph) <= max_length:
+        # 获取段落的 token 数量
+        paragraph_token_count = client.get_token_count(paragraph)
+
+        # 如果段落本身不超过max_length Token，直接作为一个chunk
+        if paragraph_token_count <= max_length:
             chunks.append(paragraph)
             continue
         
         # 第二层：对超长段落按行切分
         lines = paragraph.split('\n')
         current_chunk_lines = []
-        current_chunk_len = 0
+        current_chunk_tokens = 0
         
         for line in lines:
             line = line.strip()
             if not line:
                 continue
             
-            line_len = len(line)
-            added_len = line_len + (1 if current_chunk_lines else 0)
+            line_token_count = client.get_token_count(line)
+            # 添加一行所需的 token 开销（通常 \n 是 1 token）
+            added_tokens = line_token_count + (1 if current_chunk_lines else 0)
             
             # 第三层：对超长行进行语义切分
-            if line_len > max_length:
+            if line_token_count > max_length:
                 # 先把当前积累的内容flush掉
                 if current_chunk_lines:
                     chunks.append('\n'.join(current_chunk_lines))
                     current_chunk_lines = []
-                    current_chunk_len = 0
+                    current_chunk_tokens = 0
                 
                 # 对超长行进行语义切分
                 sub_chunks = semantic_chunking_with_auto_clusters(line, max_chunk_size=max_length)
                 chunks.extend(sub_chunks)
             
             # 如果加上当前行会超过max_length，先flush
-            elif current_chunk_len + added_len > max_length:
+            elif current_chunk_tokens + added_tokens > max_length:
                 chunks.append('\n'.join(current_chunk_lines))
                 current_chunk_lines = [line]
-                current_chunk_len = line_len
+                current_chunk_tokens = line_token_count
             
             # 否则加入当前块
             else:
                 current_chunk_lines.append(line)
-                current_chunk_len += added_len
+                current_chunk_tokens += added_tokens
         
         # 处理段落最后剩余的内容
         if current_chunk_lines:

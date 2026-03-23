@@ -82,7 +82,8 @@ class PDFProcessor:
 
             file_bytes = self.minio_tool.get_file_byte(
                 bucket_name=current_task.bucket_name,
-                object_name=current_task.object_key
+                object_name=current_task.object_key,
+                oss_info=oss_info
             )
             # 为了支持图片文件，需要先转换为 PDF
             if extension in IMAGE_EXTENSIONS:
@@ -139,7 +140,8 @@ class PDFProcessor:
                                     bucket_name=current_task.output_bucket,
                                     object_name=remote_path,
                                     file_bytes=img_f.read(),
-                                    content_type=f"image/{file.split('.')[-1]}"
+                                    content_type=f"image/{file.split('.')[-1]}",
+                                    oss_info=oss_info
                                 )
                                 images_list.append(remote_path)
 
@@ -156,7 +158,8 @@ class PDFProcessor:
                     bucket_name=current_task.output_bucket,
                     object_name=f"{current_task.task_id}/{name_without_ext}.md",
                     file_bytes=clean_md.encode("utf-8"),
-                    content_type="text/markdown"
+                    content_type="text/markdown",
+                    oss_info=oss_info
                 )
                 
                 # 切分处理后的markdown内容，并增强表格标题
@@ -165,7 +168,8 @@ class PDFProcessor:
                     bucket_name=current_task.output_bucket,
                     object_name=f"{current_task.task_id}/{name_without_ext}_splitted.md",
                     file_bytes=splitted_markdown.encode("utf-8"),
-                    content_type="text/markdown"
+                    content_type="text/markdown",
+                    oss_info=oss_info
                 )
 
                 file_content = json.dumps(content_list, ensure_ascii=False, indent=4).encode("utf-8", "surrogatepass").decode("utf-8", "ignore")
@@ -173,7 +177,8 @@ class PDFProcessor:
                     bucket_name=current_task.output_bucket,
                     object_name=f"{current_task.task_id}/{name_without_ext}_content_list.json",
                     file_bytes=file_content.encode("utf-8"),
-                    content_type="application/json"
+                    content_type="application/json",
+                    oss_info=oss_info
                 )
                 
                 # --------
@@ -199,7 +204,8 @@ class PDFProcessor:
                     bucket_name=current_task.output_bucket,
                     object_name=f"{current_task.task_id}/{name_without_ext}_middle.json",
                     file_bytes=middle_json_content.encode("utf-8"),
-                    content_type="application/json"
+                    content_type="application/json",
+                    oss_info=oss_info
                 )
 
                 # 写入任务 output_info

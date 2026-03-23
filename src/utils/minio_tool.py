@@ -219,8 +219,7 @@ class MinioConnection:
             return success
         except Exception as e:
             logger.error(f'删除文件失败: {object_name}, 异常: {e}')
-            raise(f'删除文件失败: {e}')
-            return success
+            raise RuntimeError(f'删除文件失败: {e}') from e
 
     def get_file_byte(self,object_name: str,bucket_name:str, oss_info: Optional[Dict[str, Any]] = None) -> bytes:
         """
@@ -235,7 +234,7 @@ class MinioConnection:
             return response.read()
         except Exception as e:
             logger.error(f'获取文件失败: {object_name}')
-            raise(f'获取文件失败: {e}')
+            raise RuntimeError(f'获取文件失败: {e}') from e
 
     def file_exists(self,object_name: str,bucket_name:str, oss_info: Optional[Dict[str, Any]] = None) -> bool:
         """

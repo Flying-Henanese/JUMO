@@ -4,7 +4,7 @@ pdf_route.py
 定义 PDF 相关的接口路由，包括分析 PDF 接口和查询任务状态接口。
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from datetime import datetime
 from minio.error import S3Error
@@ -16,6 +16,7 @@ from startup import task_repository,minio_tool
 from fastapi import UploadFile, File
 from typing import List
 import json
+import urllib.parse
 # 为了让接口返回压缩包
 import zipfile
 from loguru import logger
@@ -32,6 +33,15 @@ router = APIRouter()
 MAX_WORKERS = int(os.getenv('MAX_WORKERS', 8))
 MAX_QUEUING_TASKS = int(os.getenv('MAX_QUEUING_TASKS', 40))
 UPLOAD_BUCKET = os.getenv('UPLOAD_BUCKET', 'uploads')
+
+
+def _get_query_param_preserve_plus(query_string: str, key: str):
+    prefix = f"{key}="
+    for segment in query_string.split("&"):
+        if segment.startswith(prefix):
+            return urllib.parse.unquote(segment[len(prefix):], encoding="utf-8", errors="replace")
+    return None
+
 
 @router.post("/drop-pdf")
 def drop_pdf(
@@ -113,6 +123,7 @@ def drop_pdf(
 
 @router.post("/analyze-pdf")
 def analyze_pdf(
+    request: Request,
     pdf_path: str, 
     bucket_name: str, 
     output_bucket: str,
@@ -129,6 +140,13 @@ def analyze_pdf(
     """
     分析PDF文件的接口（移除 ActiveTask 引用，保留本地 BackgroundTasks）
     """
+    raw_query = request.scope.get("query_string", b"").decode("utf-8", errors="ignore")
+    raw_secret_key = _get_query_param_preserve_plus(raw_query, "oss_secret_key")
+    if raw_secret_key is not None:
+        oss_secret_key = raw_secret_key
+    elif oss_secret_key is not None:
+        oss_secret_key = oss_secret_key.replace(" ", "+")
+
     oss_info = None
     if oss_endpoint and oss_access_key and oss_secret_key:
         oss_info = {

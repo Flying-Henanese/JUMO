@@ -22,6 +22,19 @@ class EmbeddingClient(ABC):
         """
         pass
 
+    @abstractmethod
+    def get_token_count(self, text: str) -> int:
+        """
+        Get the number of tokens in the text.
+        
+        Args:
+            text: Input text.
+            
+        Returns:
+            The number of tokens.
+        """
+        pass
+
 class NERClient(ABC):
     """
     Abstract base class for Named Entity Recognition clients.
