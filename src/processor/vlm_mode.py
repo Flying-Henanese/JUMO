@@ -175,6 +175,19 @@ class PDFProcessor:
                     file_bytes=file_content.encode("utf-8"),
                     content_type="application/json"
                 )
+                
+                # --------
+                # BOOKRAG流程的内容
+                # data_dir = "/app/data"
+                # os.makedirs(data_dir, exist_ok=True)
+                # local_content_list_path = os.path.join(
+                #     data_dir, f"{current_task.task_id}_{name_without_ext}_content_list.json"
+                # )
+                # with open(local_content_list_path, "w", encoding="utf-8") as f:
+                #     f.write(file_content)
+                # logger.info(f"Saved content_list to local path: {local_content_list_path}")
+                # --------
+
 
                 # middle_json 内容
                 # 如果禁用了公式识别，从JSON结构中移除所有LaTeX表达式

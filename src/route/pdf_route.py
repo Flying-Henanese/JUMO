@@ -23,7 +23,8 @@ import os
 from fastapi.responses import StreamingResponse
 from io import BytesIO
 import zipfile
-from celery_worker.celery_server import DEFAULT_QUEUE_NAME, get_queue_length, send_pdf_task
+from celery import chain
+from celery_worker.celery_server import DEFAULT_QUEUE_NAME, get_queue_length, send_pdf_task, celery_app, TASK_NAME_PROCESS_PDF
 from const.file_extensions import OFFICE_EXTENSIONS, PDF_EXTENSIONS, IMAGE_EXTENSIONS,EXCEL_EXTENTIONS
 
 # 实例化资源
@@ -177,7 +178,16 @@ def analyze_pdf(
             })
 
         task_repository.create_task(task_to_add)
-        send_pdf_task(task_id, DEFAULT_QUEUE_NAME)
+
+        # bookrag内容
+        # bookrag_task_name = os.getenv("BOOKRAG_TASK_NAME", "bookrag.process_document_task")
+        # bookrag_queue = os.getenv("BOOKRAG_QUEUE_NAME", DEFAULT_QUEUE_NAME)
+        # workflow = chain(
+        #     celery_app.signature(TASK_NAME_PROCESS_PDF, args=[task_id], queue=DEFAULT_QUEUE_NAME),
+        #     celery_app.signature(bookrag_task_name, queue=bookrag_queue)
+        # )
+        # workflow.apply_async()
+        # --------
 
         return JSONResponse(content={
             "task_id": task_id,
@@ -402,4 +412,8 @@ def get_batch_task_status(task_ids: List[str]):
             })
     
     return JSONResponse(content=results)
+
+
+
+
         

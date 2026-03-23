@@ -6,6 +6,7 @@ tests/test_resource/
 *.pyc
 .vscode/
 database/
+data/
 backup/
 kernel_meta/
 poetry.lock

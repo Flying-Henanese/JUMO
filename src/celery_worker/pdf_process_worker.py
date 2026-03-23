@@ -110,6 +110,9 @@ def process_pdf_celery(self, task_id: str):
 
     repo = _repo
     processor = _processor
+    output_info = None
+    output_bucket = None
+    succeeded = False
 
     # 标记开始处理
     try:
@@ -127,6 +130,8 @@ def process_pdf_celery(self, task_id: str):
 
         processor._sync_process_pdf(task_obj)
         logger.info(f"Task {task_id} 处理完成")
+        output_info = task_obj.output_info
+        output_bucket = task_obj.output_bucket
         succeeded = True
     except Exception as e:
         logger.exception(f"Task {task_id} 处理失败: {e}")
@@ -139,7 +144,13 @@ def process_pdf_celery(self, task_id: str):
     except Exception as e:
         logger.error(f"complete_task 失败: {e}")
 
-    return {"status": "ok", "task_id": task_id}
+    status = "ok" if succeeded else "failed"
+    return {
+        "status": status,
+        "task_id": task_id,
+        "output_info": output_info,
+        "output_bucket": output_bucket,
+    }
 
 # 自启动：按 INFERENCE_DEVICES 自动生成多个 worker（每个设备一个）
 
