@@ -206,6 +206,7 @@ def analyze_pdf(
         # )
         # workflow.apply_async()
         # --------
+        send_pdf_task(task_id, DEFAULT_QUEUE_NAME)
 
         return JSONResponse(content={
             "task_id": task_id,

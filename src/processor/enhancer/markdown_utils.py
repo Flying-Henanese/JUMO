@@ -3,7 +3,7 @@ from .semantic_splitter import semantic_chunking_with_auto_clusters
 from processor.nlp_inference.factory import InferenceFactory
 
 def infer_heading_level(title: str) -> int:
-    """
+    r"""
     根据标题文本推断其层级级别（1-6级）。
 
     参数:
