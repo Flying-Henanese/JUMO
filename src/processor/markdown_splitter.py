@@ -36,11 +36,13 @@ from mdit_py_plugins.dollarmath import dollarmath_plugin
 import re
 import os
 from loguru import logger
+from sentence_transformers import SentenceTransformer
 from utils.auto_device_selector import get_device
 from processor.converters.table_to_markdown import html_table_to_key_value
 from .named_entity_recognition import append_entities_to_header  # 引入自动实体提取函数
 from .enhancer.semantic_splitter import semantic_chunking_with_auto_clusters
 from .enhancer.markdown_utils import infer_heading_level, get_title_path, extract_table_block, split_text_by_length_and_newline
+from processor.nlp_inference.factory import InferenceFactory
 import threading
 """
 不论是word,pdf还是图片，最终都会被转换成markdown格式
@@ -100,7 +102,8 @@ def _flush_content(
         result.extend([header, content, '-' * 10])
     else:
         # 如果允许切分（无论是普通文本还是特殊的allow_split元素）
-        if len(content) > max_length:
+        client = InferenceFactory.get_embedding_client()
+        if client.get_token_count(content) > max_length:
             # 使用层次化切分策略：先按段落分，再按行分，最后按语义分
             chunks = split_text_by_length_and_newline(content, max_length)
             for idx, chunk in enumerate(chunks, 1):

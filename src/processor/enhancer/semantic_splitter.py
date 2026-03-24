@@ -67,19 +67,24 @@ def find_best_num_clusters(embeddings, min_clusters=2, max_clusters=10):
 def semantic_chunking_with_auto_clusters(text, max_chunk_size=500, model_id="BAAI/bge-small-zh-v1.5"):
     """
     Semantic chunking with automatic cluster number selection.
+    Threshold is now based on token count.
     """
     # Step 1: Split sentences
     sentences = split_mixed_sentences(text)
     if len(sentences) < 2:
         return [text.strip()]
 
-    # Step 2: Vectorization
+    # Step 2: Vectorization and token counting
     client = InferenceFactory.get_embedding_client()
     embeddings = client.encode(sentences)
+    
+    # Pre-calculate token counts for each sentence
+    sentence_token_counts = [client.get_token_count(s) for s in sentences]
+    total_tokens = sum(sentence_token_counts)
 
     # Step 3: Determine number of clusters
-    # Simple heuristic: number of sentences // max_chunk_size + 1
-    best_k = max(len(sentences)//max_chunk_size, 1) + 1
+    # Simple heuristic: total tokens // max_chunk_size + 1
+    best_k = max(total_tokens // max_chunk_size, 1) + 1
     
     # Step 4: Clustering
     labels = AgglomerativeClustering(n_clusters=best_k, metric='cosine', linkage='average').fit_predict(embeddings)
@@ -87,16 +92,19 @@ def semantic_chunking_with_auto_clusters(text, max_chunk_size=500, model_id="BAA
     # Step 5: Group sentences by cluster and limit chunk size
     chunks = []
     current_chunk = ""
+    current_chunk_tokens = 0
     current_label = labels[0]
 
-    for sentence, label in zip(sentences, labels):
-        if label != current_label or len(current_chunk) + len(sentence) > max_chunk_size:
+    for sentence, label, token_count in zip(sentences, labels, sentence_token_counts):
+        if label != current_label or current_chunk_tokens + token_count > max_chunk_size:
             if current_chunk.strip():
                 chunks.append(current_chunk.strip())
             current_chunk = sentence
+            current_chunk_tokens = token_count
             current_label = label
         else:
             current_chunk += sentence
+            current_chunk_tokens += token_count
 
     if current_chunk.strip():
         chunks.append(current_chunk.strip())
