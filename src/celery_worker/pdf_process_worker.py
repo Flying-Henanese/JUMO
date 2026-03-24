@@ -182,7 +182,7 @@ if __name__ == "__main__":
         else:
             worker_name = f"worker_{q}_cpu@%h"
         # Celery 应用模块路径（-A），用于定位任务与配置
-        celery_app = "src.celery_worker.pdf_process_worker"
+        celery_app_path = "celery_worker.pdf_process_worker"
         # Worker 监听的队列名（-Q），决定消费哪个队列
         queue_name = DEFAULT_QUEUE_NAME
         # Worker 节点名称（-n），包含设备信息以保证唯一
@@ -203,7 +203,7 @@ if __name__ == "__main__":
 
         cmd = [
             celery_bin,
-            "-A", celery_app,
+            "-A", celery_app_path,
             "worker",
             "-Q", queue_name,
             "-n", node_name,

@@ -159,7 +159,7 @@ services:
       # 注意：当前代码里 celery 配置关闭了远程控制（worker_enable_remote_control=False），
       # 所以 `celery inspect ping` 会一直返回 "No nodes replied"，不适合作为健康检查。
       # 这里改为检查 worker 进程是否存在。
-      test: ["CMD-SHELL", "pgrep -f 'celery.*-A src.celery_worker.pdf_process_worker.* worker' >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "pgrep -f 'celery.*-A celery_worker.pdf_process_worker.* worker' >/dev/null || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
