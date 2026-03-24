@@ -160,6 +160,10 @@ def analyze_pdf(
             raise HTTPException(status_code=400, detail="提供的OSS配置无法连接，请检查endpoint, access_key, secret_key是否正确")
 
     try:
+        # 检查output_bucket是否存在
+        if not minio_tool.bucket_exists(output_bucket):
+            raise HTTPException(status_code=400, detail=f"输出存储桶{output_bucket}不存在")
+
         minio_tool.file_exists(bucket_name=bucket_name, object_name=pdf_path, oss_info=oss_info)
     except S3Error:
         raise HTTPException(status_code=404, detail="PDF文件未找到")
@@ -196,6 +200,7 @@ def analyze_pdf(
             })
 
         task_repository.create_task(task_to_add)
+        send_pdf_task(task_id, DEFAULT_QUEUE_NAME)
 
         # bookrag内容
         # bookrag_task_name = os.getenv("BOOKRAG_TASK_NAME", "bookrag.process_document_task")
