@@ -1,9 +1,9 @@
 services:
   # FastAPI 主服务
-  mineru-api:
+  jumo-api:
     build: .
     image: mineru-service:latest
-    container_name: mineru-api
+    container_name: jumo-api
     restart: unless-stopped
     ports:
       # 宿主 5116 -> 容器 5116 (FastAPI)
@@ -60,7 +60,7 @@ services:
       # 否则背后实际的操作都会失败
       redis:
         condition: service_healthy
-      mineru-worker:
+      jumo-worker:
         condition: service_healthy
 
     healthcheck:
@@ -75,9 +75,9 @@ services:
       bash -lc "/app/.venv/bin/python src/mineru_service.py"
 
   # Celery Worker 容器
-  mineru-worker:
+  jumo-worker:
     image: mineru-service:latest
-    container_name: mineru-worker
+    container_name: jumo-worker
     restart: unless-stopped
 
     environment:
@@ -195,7 +195,7 @@ services:
   # vLLM 推理后端容器
   vllm:
     image: mineru-service:latest
-    container_name: mineru-vllm
+    container_name: jumo-vllm 
     restart: unless-stopped
 
     environment:
