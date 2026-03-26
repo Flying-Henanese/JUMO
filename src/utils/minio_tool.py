@@ -31,7 +31,9 @@ class MinioConnection:
         return cls._instance
 
     def _init_pool(self):
+        # 使用有序字典维护连接池，按最近使用排序
         self._clients: OrderedDict[str, Minio] = OrderedDict()
+        # 维护20个链接，实现LRU淘汰策略，最近最少使用的链接会被淘汰
         self._max_pool_size = int(os.getenv('MINIO_CONNECTION_POOL_SIZE', 20))
         
         endpoint = os.getenv('MINIO_ENDPOINT')

@@ -45,7 +45,7 @@ def safe_filename_for_header(filename: str) -> str:
         encoded_filename = urllib.parse.quote(filename, safe='')
         return f"attachment; filename*=UTF-8''{encoded_filename}"
 # 实例化资源
-router = APIRouter()
+router = APIRouter(prefix="/realtime")
 UPLOAD_BUCKET = os.getenv('UPLOAD_BUCKET', 'uploads')
 
 class AnalyzeResult(BaseModel):
@@ -59,6 +59,29 @@ class AnalyzeResponse(BaseModel):
     message: Optional[str] = None
     data: Optional[AnalyzeResult] = None
 
+@router.post("/splite-markdown-file")
+def splite_markdown(
+    markdown_content: str,
+    file: UploadFile = File(...),
+):
+    """
+    分割markdown文件的接口
+    """
+    result = ""
+    if markdown_content:
+        result = split_markdown(markdown_content)
+    else:
+        result = ensure_utf8_string(file.file.read().decode('utf-8', errors='replace'))
+        result = split_markdown(result)
+    return AnalyzeResponse(
+        status="success",
+        message="文件已成功分析",
+        data=AnalyzeResult(
+            markdown_url="",
+            markdown_content=result,
+            images=None
+        )
+    )
 
 @router.post("/analyze-office-file")
 def analyze_document(

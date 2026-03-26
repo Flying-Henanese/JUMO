@@ -25,9 +25,6 @@ services:
       - CELERY_REDIS_DB_BACKEND=${CELERY_REDIS_DB_BACKEND:-1}
       # 有一部分也需要推理，所以在这里加上
       - INFERENCE_DEVICES=${INFERENCE_DEVICES:-0}
-      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
-      - ${HOME}/.cache/modelscope:/root/.cache/modelscope
-      - ${HOME}/.cache/vllm:/root/.cache/vllm
       # MinIO 配置
       - MINIO_ENDPOINT=${MINIO_ENDPOINT}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
@@ -46,6 +43,9 @@ services:
       # 否则每个容器都会在自己的目录下创建一个数据库文件
       - ./database:/app/database
       - ${HOME}/nltk_data:/root/nltk_data
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      - ${HOME}/.cache/modelscope:/root/.cache/modelscope
+      - ${HOME}/.cache/vllm:/root/.cache/vllm
 
     deploy:
       resources:

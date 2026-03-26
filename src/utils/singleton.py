@@ -1,3 +1,8 @@
+'''
+单例装饰器
+在这里统一管理所有的单例装饰器，包括线程安全的单例装饰器
+'''
+
 def singleton(cls):
     """单例装饰器（已弃用，建议使用 class_singleton）"""
     instances = {}

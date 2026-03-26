@@ -36,11 +36,63 @@ UPLOAD_BUCKET = os.getenv('UPLOAD_BUCKET', 'uploads')
 
 
 def _get_query_param_preserve_plus(query_string: str, key: str):
+    '''
+    从查询字符串中获取参数值，解决转义的问题，保留加号（+）
+    '''
     prefix = f"{key}="
     for segment in query_string.split("&"):
         if segment.startswith(prefix):
             return urllib.parse.unquote(segment[len(prefix):], encoding="utf-8", errors="replace")
     return None
+
+def _build_task(
+    task_id: str,
+    object_key: str,
+    bucket_name: str,
+    output_bucket: str,
+    ocr_enabled: bool,
+    table_enabled: bool,
+    formula_enabled: bool,
+    inline_formula_enabled: bool,
+    ocr_lang,
+    oss_endpoint: str = None,
+    oss_access_key: str = None,
+    oss_secret_key: str = None,
+    oss_secure: bool = None,
+):
+    ocr_lang_value = ocr_lang.value if isinstance(ocr_lang, OCRLanguage) else ocr_lang
+    return Task(
+        task_id=task_id,
+        object_key=object_key,
+        bucket_name=bucket_name,
+        output_bucket=output_bucket,
+        ocr_enabled=ocr_enabled,
+        table_enabled=table_enabled,
+        formula_enabled=formula_enabled,
+        inline_formula_enabled=inline_formula_enabled,
+        ocr_lang=ocr_lang_value,
+        output_info='',
+        create_time=datetime.now(),
+        finish_time=None,
+        status=TaskStatus.QUEUED,
+        oss_endpoint=oss_endpoint,
+        oss_access_key=oss_access_key,
+        oss_secret_key=oss_secret_key,
+        oss_secure=1 if oss_secure is not None and oss_secure else (0 if oss_secure is not None else None),
+    )
+
+
+def _queue_full_response():
+    return JSONResponse(content={
+        "task_id": "",
+        "status": TaskStatus.FAILED,
+        "message": "队列已满，请稍后再试"
+    })
+
+
+def _create_and_enqueue_task(task: Task, queue_name: str = DEFAULT_QUEUE_NAME):
+    task_repository.create_task(task)
+    send_pdf_task(task.task_id, queue_name)
 
 
 @router.post("/drop-pdf")
@@ -85,7 +137,7 @@ def drop_pdf(
         task_ids = []
         for obj in objects:
             task_id = generate_short_uuid()
-            task_to_add = Task(
+            task_to_add = _build_task(
                 task_id=task_id,
                 object_key=obj,
                 bucket_name=bucket_name,
@@ -94,14 +146,9 @@ def drop_pdf(
                 table_enabled=table_enabled,
                 formula_enabled=formula_enabled,
                 inline_formula_enabled=inline_formula_enabled,
-                ocr_lang=ocr_lang.value,
-                output_info='',
-                create_time=datetime.now(),
-                finish_time=None,
-                status=TaskStatus.QUEUED,
+                ocr_lang=ocr_lang,
             )
-            task_repository.create_task(task_to_add)
-            send_pdf_task(task_id, target_queue)
+            _create_and_enqueue_task(task_to_add, target_queue)
             task_ids.append(task_id)
 
         logger.info(f"路径 {pdf_path} 下共 {len(objects)} 个文件已入队到 {target_queue}，当前等待数: {backlog}")
@@ -171,7 +218,7 @@ def analyze_pdf(
     task_id = generate_short_uuid()
 
     try:
-        task_to_add = Task(
+        task_to_add = _build_task(
             task_id=task_id,
             object_key=pdf_path,
             bucket_name=bucket_name,
@@ -180,27 +227,17 @@ def analyze_pdf(
             table_enabled=table_enabled,
             formula_enabled=formula_enabled,
             inline_formula_enabled=inline_formula_enabled,
-            ocr_lang=ocr_lang.value,
-            output_info='',
-            create_time=datetime.now(),
-            finish_time=None,
-            status=TaskStatus.QUEUED,
+            ocr_lang=ocr_lang,
             oss_endpoint=oss_endpoint,
             oss_access_key=oss_access_key,
             oss_secret_key=oss_secret_key,
-            oss_secure=1 if oss_secure else 0
+            oss_secure=oss_secure,
         )
 
-
         if task_repository.count_active_task() >= MAX_QUEUING_TASKS:
-            return JSONResponse(content={
-                "task_id": "",
-                "status": TaskStatus.FAILED,
-                "message": "队列已满，请稍后再试"
-            })
+            return _queue_full_response()
 
-        task_repository.create_task(task_to_add)
-        send_pdf_task(task_id, DEFAULT_QUEUE_NAME)
+        _create_and_enqueue_task(task_to_add, DEFAULT_QUEUE_NAME)
 
         # bookrag内容
         # bookrag_task_name = os.getenv("BOOKRAG_TASK_NAME", "bookrag.process_document_task")
@@ -211,7 +248,6 @@ def analyze_pdf(
         # )
         # workflow.apply_async()
         # --------
-        send_pdf_task(task_id, DEFAULT_QUEUE_NAME)
 
         return JSONResponse(content={
             "task_id": task_id,
@@ -259,8 +295,7 @@ def upload_and_analyze_pdf(
             content_type=content_type
         )
 
-        # 创建任务
-        task_to_add = Task(
+        task_to_add = _build_task(
             task_id=task_id,
             object_key=object_name,
             bucket_name=bucket_name,
@@ -269,22 +304,13 @@ def upload_and_analyze_pdf(
             table_enabled=table_enabled,
             formula_enabled=formula_enabled,
             inline_formula_enabled=inline_formula_enabled,
-            ocr_lang=ocr_lang.value,
-            output_info='',
-            create_time=datetime.now(),
-            finish_time=None,
-            status=TaskStatus.QUEUED,
+            ocr_lang=ocr_lang,
         )
 
         if task_repository.count_active_task() >= MAX_QUEUING_TASKS:
-            return JSONResponse(content={
-                "task_id": "",
-                "status": TaskStatus.FAILED,
-                "message": "队列已满，请稍后再试"
-            })
+            return _queue_full_response()
 
-        task_repository.create_task(task_to_add)
-        send_pdf_task(task_id, DEFAULT_QUEUE_NAME)
+        _create_and_enqueue_task(task_to_add, DEFAULT_QUEUE_NAME)
 
         return JSONResponse(content={
             "task_id": task_id,
