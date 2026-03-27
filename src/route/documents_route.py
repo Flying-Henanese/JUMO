@@ -19,7 +19,7 @@ from processor.converters.doc_to_markdown import doc_to_markdown
 from processor.markdown_splitter import process_markdown as split_markdown
 from pydantic import BaseModel
 from loguru import logger
-from fastapi import File, UploadFile
+from fastapi import File, UploadFile, Form
 import urllib.parse
 
 
@@ -59,20 +59,23 @@ class AnalyzeResponse(BaseModel):
     message: Optional[str] = None
     data: Optional[AnalyzeResult] = None
 
-@router.post("/splite-markdown-file")
-def splite_markdown(
-    markdown_content: str,
-    file: UploadFile = File(...),
+@router.post("/split-markdown-file")
+def split_markdown_file(
+    markdown_content: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None),
 ):
     """
     分割markdown文件的接口
     """
     result = ""
-    if markdown_content:
-        result = split_markdown(markdown_content)
-    else:
+    if markdown_content and len(markdown_content) > 0:
+        result = split_markdown(md_text = markdown_content)
+    elif file:
         result = ensure_utf8_string(file.file.read().decode('utf-8', errors='replace'))
         result = split_markdown(result)
+    else:
+        raise HTTPException(status_code=400, detail="请提供markdown文件或者非空markdown内容")
+
     return AnalyzeResponse(
         status="success",
         message="文件已成功分析",
