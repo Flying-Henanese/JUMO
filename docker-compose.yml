@@ -252,7 +252,7 @@ services:
   # Redis 容器，其他服务通过服务名 redis 访问
   redis:
     image: redis:alpine
-    container_name: mineru-redis
+    container_name: redis
     restart: unless-stopped
     environment:
       # 设置redis实例的密码，保证前面的服务可以正常访问这个redis
