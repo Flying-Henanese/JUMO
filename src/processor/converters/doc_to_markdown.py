@@ -19,6 +19,7 @@ from docling.datamodel.pipeline_options import PaginatedPipelineOptions
 from docling.document_converter import WordFormatOption
 import os
 import re
+import io
 from startup import minio_tool
 from PIL import Image
 from docling_core.transforms.serializer.markdown import MarkdownDocSerializer
@@ -32,8 +33,9 @@ def doc_to_markdown(
     input_data : str,
     task_id:str = "no_specific_task_id",
     bucket:str = None,
-    oss_info: dict = None
-    ) -> str:
+    oss_info: dict = None,
+    return_images: bool = False
+    ):
     """
     Converts a Word document (.docx) to Markdown, preserving tables, images, and hierarchy.
 
@@ -67,8 +69,9 @@ def doc_to_markdown(
     # 把文档中的图片提取出来
     # 1. 首先放入minio中
     # 2. 把所有图片的url替换为minio中的url,用于后续前端应用读取图片进行渲染
-    md_content = _insert_images_to_markdown(processed_doc,md_content,task_id,bucket,oss_info)
-    # 最后使用process_markdown进行切分
+    md_content, image_paths = _insert_images_to_markdown(processed_doc, md_content, task_id, bucket, oss_info)
+    if return_images:
+        return md_content, image_paths
     return md_content
 
 
@@ -141,8 +144,9 @@ def _insert_images_to_markdown(
     doc:DoclingDocument,
     markdown_content:str,
     task_id:str = "no_specific_task_id",
-    bucket:str = None
-    ) -> str:
+    bucket:str = None,
+    oss_info: dict = None
+    ):
     """
     Extracts images from the document, uploads them to object storage, and updates Markdown references.
 
@@ -160,37 +164,38 @@ def _insert_images_to_markdown(
         str: The Markdown content with valid image links.
     """
     image_counter = 0
-    # 遍历文档中的图片
-    for node,_ in doc.iterate_items():
-        # 检查节点标签是否为图片
-        # 这里其实就是把node作为pydantic模型进行序列化处理进而转换成一个dict字典
-        # 然后检查是否有属性label
-        # 使用字典可以避免因为属性不存在而导致的错误
-        # 还有一个点就是node是一个docling文档节点，他不一定有label对象
-        if node.model_dump().get("label") == DocItemLabel.PICTURE:
-            # 获取图片引用
-            image_ref = node.model_dump().get("image")
+    image_paths = []
+    for it in doc.iterate_items():
+        node = it[0] if isinstance(it, (tuple, list)) else it
+        node_data = node.model_dump() if hasattr(node, "model_dump") else {}
+        label = node_data.get("label")
+        label_str = str(label).lower()
+        if label == DocItemLabel.PICTURE or label_str in {"picture", "docitemlabel.picture"}:
+            image_ref = node_data.get("image")
             if image_ref:
-                # 获取图片数据
-                image:Image.Image = node.get_image(doc) # 可能因为图片依赖文档全局信息，所以把所属的文档对象穿进去获取图片了
+                image: Image.Image = node.get_image(doc)
                 if image:
-                    # 生成图片文件名
                     image_filename = f"image_{image_counter}.png"
-                    image_path = os.path.join(task_id,"images", image_filename)
+                    image_path = os.path.join(task_id, "images", image_filename)
                     image_counter += 1
-                    # 上传图片到minio
                     if not bucket:
                         continue
+                    image_bytes_buffer = io.BytesIO()
+                    image.save(image_bytes_buffer, format="PNG")
                     minio_tool.upload_file_by_bytes(
                         object_name=image_path,
                         bucket_name=bucket,
-                        file_bytes=image.tobytes(),
-                        content_type=f"image/{image_filename.split('.')[-1]}",
-                        oss_info=oss_info)
-                    # 使用实际存储在OSS中的图片地址替换 Markdown 内容中的占位符
+                        file_bytes=image_bytes_buffer.getvalue(),
+                        content_type="image/png",
+                        oss_info=oss_info
+                    )
+                    image_paths.append(image_path)
                     placeholder = "<!-- image -->"
-                    markdown_content = markdown_content.replace(placeholder, f"![]({image_path})", 1)
-    return markdown_content
+                    if placeholder in markdown_content:
+                        markdown_content = markdown_content.replace(placeholder, f"![]({image_path})", 1)
+                    else:
+                        markdown_content = f"{markdown_content}\n\n![]({image_path})"
+    return markdown_content, image_paths
 
 def _merge_captions_with_content(doc: DoclingDocument) -> DoclingDocument:
     """

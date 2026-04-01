@@ -21,6 +21,8 @@ from pydantic import BaseModel
 from loguru import logger
 from fastapi import File, UploadFile, Form
 import urllib.parse
+import json
+from utils.id_generator import generate_short_uuid
 
 
 def ensure_utf8_string(content) -> str:
@@ -49,8 +51,11 @@ router = APIRouter(prefix="/realtime")
 UPLOAD_BUCKET = os.getenv('UPLOAD_BUCKET', 'uploads')
 
 class AnalyzeResult(BaseModel):
-    markdown_url: str
     markdown_content: str
+    raw_markdown_url: Optional[str] = None
+    split_markdown_url: Optional[str] = None
+    raw_markdown_content: Optional[str] = None
+    split_markdown_content: Optional[str] = None
     images: Optional[List[str]] = None
 
 # 定义接口的返回体
@@ -80,16 +85,16 @@ def split_markdown_file(
         status="success",
         message="文件已成功分析",
         data=AnalyzeResult(
-            markdown_url="",
             markdown_content=result,
+            split_markdown_content=result,
             images=None
         )
     )
 
 @router.post("/analyze-office-file")
 def analyze_document(
-    file_path: str, 
-    bucket_name: str, 
+    file_path: str,
+    bucket_name: str,
     output_bucket: str,
     processing_type: str = "0",
     max_heading_chunk_size: int = 1024,
@@ -99,70 +104,88 @@ def analyze_document(
     分析word和excel文件的接口
     """
     try:
-        # 先判断文件是否存在，如果存在则继续后续的分析流程
+        if not minio_tool.bucket_exists(output_bucket):
+            raise HTTPException(status_code=400, detail=f"输出存储桶{output_bucket}不存在")
         if not minio_tool.file_exists(bucket_name=bucket_name, object_name=file_path):
             raise HTTPException(status_code=404, detail="文件不存在")
-        # 判断文件是excel还是word类型
-        file_name, file_ext = os.path.splitext(file_path)
-        # 获取文件的字节流
-        file_content = minio_tool.get_file_byte(
-            bucket_name=bucket_name, 
-            object_name=file_path
-            )
-        markdown_content = ""
+
+        original_filename = os.path.basename(file_path)
+        original_name_without_ext, file_ext = os.path.splitext(original_filename)
+        file_ext = file_ext.lower()
+        file_content = minio_tool.get_file_byte(bucket_name=bucket_name, object_name=file_path)
+
+        result_dir = generate_short_uuid()
+        raw_markdown = ""
+        split_markdown_content = ""
+        images: Optional[List[str]] = []
+
         if file_ext in WORD_EXTENTIONS:
-            # 分析word文
-            with tempfile.NamedTemporaryFile(
-                delete=False,
-                suffix=file_ext
-            ) as temp_file:
-                temp_file.write(file_content)
-                temp_file_path = temp_file.name
-                # 获取markdown内容
-                raw_markdown = doc_to_markdown(
-                    input_data = temp_file_path,
-                    task_id = file_name,
-                    bucket = output_bucket
+            temp_file_path = None
+            try:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as temp_file:
+                    temp_file.write(file_content)
+                    temp_file_path = temp_file.name
+                raw_markdown, images = doc_to_markdown(
+                    input_data=temp_file_path,
+                    task_id=result_dir,
+                    bucket=output_bucket,
+                    return_images=True
                 )
-                raw_markdown = ensure_utf8_string(raw_markdown)
-                markdown_content = split_markdown(raw_markdown)
+            finally:
+                if temp_file_path and os.path.exists(temp_file_path):
+                    os.remove(temp_file_path)
+            raw_markdown = ensure_utf8_string(raw_markdown)
+            split_markdown_content = split_markdown(raw_markdown)
         elif file_ext in EXCEL_EXTENTIONS:
-            # 分析excel文件
-            markdown_content = ''.join(excel_to_markdown(file_content))
+            raw_markdown = ensure_utf8_string(''.join(excel_to_markdown(file_content)))
+            split_markdown_content = split_markdown(raw_markdown)
         else:
             raise HTTPException(status_code=400, detail="不支持的文件类型")
 
-        # 上传到minio
-        markdown_content = ensure_utf8_string(markdown_content)
-        markdown_bytes = markdown_content.encode('utf-8')
-        
+        split_markdown_content = ensure_utf8_string(split_markdown_content)
+
+        raw_markdown_url = f'{result_dir}/{original_name_without_ext}.md'
+        split_markdown_url = f'{result_dir}/{original_name_without_ext}_splitted.md'
+
         minio_tool.upload_file_by_bytes(
-            bucket_name=output_bucket, 
-            object_name=f'{file_name}/{file_name}.md', 
-            file_bytes=markdown_bytes,
+            bucket_name=output_bucket,
+            object_name=raw_markdown_url,
+            file_bytes=raw_markdown.encode('utf-8'),
             content_type='text/markdown; charset=utf-8'
         )
-            
-        return AnalyzeResponse(
-            status="success",
-            message="文件分析完成",
-            data=AnalyzeResult(
-                markdown_url=f'{file_name}/{file_name}.md',
-                markdown_content=markdown_content
-            )
+        minio_tool.upload_file_by_bytes(
+            bucket_name=output_bucket,
+            object_name=split_markdown_url,
+            file_bytes=split_markdown_content.encode('utf-8'),
+            content_type='text/markdown; charset=utf-8'
         )
+
+        result = {
+            "markdown": raw_markdown_url,
+            "splitted_markdown": split_markdown_url,
+            "images": images or []
+        }
+        return {
+            "task_id": result_dir,
+            "status": "COMPLETED",
+            "result": json.dumps(result, ensure_ascii=False)
+        }
+    except HTTPException:
+        raise
     except S3Error as e:
-        return AnalyzeResponse(
-            status="error",
-            message=f"MinIO错误: {str(e)}",
-            data=None
-        )
+        return {
+            "task_id": "",
+            "status": "FAILED",
+            "result": None,
+            "message": f"MinIO错误: {str(e)}"
+        }
     except Exception as e:
-        return AnalyzeResponse(
-            status="error",
-            message=f"处理文件时出错: {str(e)}",
-            data=None
-        )
+        return {
+            "task_id": "",
+            "status": "FAILED",
+            "result": None,
+            "message": f"处理文件时出错: {str(e)}"
+        }
 
 @router.post("/analyze-office-dir")
 def analyze_office_dir(
