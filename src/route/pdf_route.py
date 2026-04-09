@@ -338,10 +338,18 @@ def get_task_status(task_id: str):
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
 
+    # 尝试解析 output_info 为 json 对象
+    result = None
+    if task.status == TaskStatus.COMPLETED and task.output_info:
+        try:
+            result = json.loads(task.output_info)
+        except Exception:
+            result = task.output_info
+
     return JSONResponse(content={
         "task_id": task.task_id,
         "status": task.status,
-        "result": task.output_info if task.status == TaskStatus.COMPLETED else None
+        "result": result
     })
 
 @router.get("/download-task-files/{task_id}", response_class=StreamingResponse)
@@ -449,10 +457,17 @@ def get_batch_task_status(task_ids: List[str]):
             
         task = task_repository.get_task_by_id(task_id)
         if task:
+            # 尝试解析 output_info 为 json 对象
+            result = None
+            if task.output_info:
+                try:
+                    result = json.loads(task.output_info)
+                except Exception:
+                    result = task.output_info
             results.append({
                 "task_id": task.task_id,
                 "status": TaskStatus.COMPLETED,
-                "result": task.output_info
+                "result": result
             })
         else:
             results.append({
