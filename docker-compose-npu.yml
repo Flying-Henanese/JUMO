@@ -4,6 +4,7 @@ services:
     build: .
     image: jumo:latest
     container_name: mineru-api
+    user: "${UID:-1000}:${GID:-1000}"
     restart: unless-stopped
     ports:
       - "${API_SERVICE_PORT:-5116}:${API_SERVICE_PORT:-5116}"   # 宿主 5116 -> 容器 5116 (FastAPI)
@@ -11,6 +12,9 @@ services:
       - API_SERVICE_PORT=${API_SERVICE_PORT:-5116}
       - PYTHON_PATH=${PYTHON_PATH:-python}
       - PYTHONPATH=/app/src
+      - HF_HOME=/app/.cache/huggingface
+      - MODELSCOPE_CACHE=/app/.cache/modelscope
+      - NLTK_DATA=/app/nltk_data
       - REDIS_HOST=redis # Redis 配置（通过docker-compose内的服务名redis访问）
       - REDIS_PORT=${REDIS_PORT:-6379}
       
@@ -44,8 +48,8 @@ services:
       # 挂载源码目录，实现代码修改后的热重载
       - ./src:/app/src
       # 模型相关配置
-      - ${HOME}/nltk_data:/root/nltk_data
-      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      - ${HOME}/nltk_data:/app/nltk_data
+      - ${HOME}/.cache/huggingface:/app/.cache/huggingface
       # NPU 驱动挂载 (API服务也需要加载torch_npu)
       - /usr/local/Ascend/driver:/usr/local/Ascend/driver
       - /usr/local/Ascend/add-ons:/usr/local/Ascend/add-ons
@@ -80,6 +84,7 @@ services:
   mineru-worker:
     image: jumo:latest
     container_name: mineru-worker
+    user: "${UID:-1000}:${GID:-1000}"
     restart: unless-stopped
 
     environment:
@@ -87,7 +92,9 @@ services:
       - MODEL=${MODEL:-opendatalab/MinerU2.5-2509-1.2B}
       - PYTHON_PATH=${PYTHON_PATH:-python}
       - PYTHONPATH=/app/src
-      - PYTHON_PATH=${PYTHON_PATH:-python}
+      - HF_HOME=/app/.cache/huggingface
+      - MODELSCOPE_CACHE=/app/.cache/modelscope
+      - NLTK_DATA=/app/nltk_data
       - HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
       - MINERU_MODEL_SOURCE=${MINERU_MODEL_SOURCE:-modelscope}
 
@@ -125,10 +132,10 @@ services:
       - ./logs:/app/logs
       # 挂载源码目录，实现代码修改后的热重载
       - ./src:/app/src
-      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
-      - ${HOME}/.cache/modelscope:/root/.cache/modelscope
-      - ${HOME}/.cache/vllm:/root/.cache/vllm
-      - ${HOME}/nltk_data:/root/nltk_data
+      - ${HOME}/.cache/huggingface:/app/.cache/huggingface
+      - ${HOME}/.cache/modelscope:/app/.cache/modelscope
+      - ${HOME}/.cache/vllm:/app/.cache/vllm
+      - ${HOME}/nltk_data:/app/nltk_data
       # NPU 驱动挂载
       - /usr/local/Ascend/driver:/usr/local/Ascend/driver
       - /usr/local/Ascend/add-ons:/usr/local/Ascend/add-ons
@@ -173,12 +180,15 @@ services:
   vllm:
     image: jumo:latest
     container_name: mineru-vllm
+    user: "${UID:-1000}:${GID:-1000}"
     restart: unless-stopped
 
     environment:
       - MODEL=${MODEL:-opendatalab/MinerU2.5-2509-1.2B}
       - HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
       - MINERU_MODEL_SOURCE=${MINERU_MODEL_SOURCE:-modelscope}
+      - HF_HOME=/app/.cache/huggingface
+      - MODELSCOPE_CACHE=/app/.cache/modelscope
       # - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
       - INFERENCE_DEVICES=${INFERENCE_DEVICES:-0}
       # 为了兼容性，将 INFERENCE_DEVICES 映射到 ASCEND_RT_VISIBLE_DEVICES
@@ -201,9 +211,9 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./src:/app/src  
-      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
-      - ${HOME}/.cache/modelscope:/root/.cache/modelscope
-      - ${HOME}/.cache/vllm:/root/.cache/vllm
+      - ${HOME}/.cache/huggingface:/app/.cache/huggingface
+      - ${HOME}/.cache/modelscope:/app/.cache/modelscope
+      - ${HOME}/.cache/vllm:/app/.cache/vllm
       # NPU 驱动挂载
       - /usr/local/Ascend/driver:/usr/local/Ascend/driver
       - /usr/local/Ascend/add-ons:/usr/local/Ascend/add-ons
