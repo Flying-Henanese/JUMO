@@ -4,7 +4,6 @@ services:
     build: .
     image: mineru-service:latest
     container_name: jumo-api
-    user: "${UID:-1000}:${GID:-1000}"
     restart: unless-stopped
     ports:
       # 宿主 5116 -> 容器 5116 (FastAPI)
@@ -15,9 +14,6 @@ services:
       - API_SERVICE_PORT=${API_SERVICE_PORT:-5116}
       - PYTHON_PATH=${PYTHON_PATH:-/app/.venv/bin/python}
       - PYTHONPATH=/app/src
-      - HF_HOME=/app/.cache/huggingface
-      - MODELSCOPE_CACHE=/app/.cache/modelscope
-      - NLTK_DATA=/app/nltk_data
       - REDIS_HOST=redis # Redis 配置（通过docker-compose内的服务名redis访问）
       - REDIS_PORT=${REDIS_PORT:-6379}
       - REDIS_DB=${REDIS_DB:-0} 
@@ -48,10 +44,10 @@ services:
       # 所以，这里要挂载到宿主机的目录，而不是容器内的目录
       # 否则每个容器都会在自己的目录下创建一个数据库文件
       - ./database:/app/database
-      - ${HOME}/nltk_data:/app/nltk_data
-      - ${HOME}/.cache/huggingface:/app/.cache/huggingface
-      - ${HOME}/.cache/modelscope:/app/.cache/modelscope
-      - ${HOME}/.cache/vllm:/app/.cache/vllm
+      - ${HOME}/nltk_data:/root/nltk_data
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      - ${HOME}/.cache/modelscope:/root/.cache/modelscope
+      - ${HOME}/.cache/vllm:/root/.cache/vllm
 
     deploy:
       resources:
@@ -84,7 +80,6 @@ services:
   jumo-worker:
     image: mineru-service:latest
     container_name: jumo-worker
-    user: "${UID:-1000}:${GID:-1000}"
     restart: unless-stopped
 
     environment:
@@ -93,9 +88,6 @@ services:
       - MODEL=${MODEL:-opendatalab/MinerU2.5-2509-1.2B}
       - PYTHON_PATH=${PYTHON_PATH:-/app/.venv/bin/python}
       - PYTHONPATH=/app/src
-      - HF_HOME=/app/.cache/huggingface
-      - MODELSCOPE_CACHE=/app/.cache/modelscope
-      - NLTK_DATA=/app/nltk_data
       - HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
       - MINERU_MODEL_SOURCE=${MINERU_MODEL_SOURCE:-modelscope}
 
@@ -129,10 +121,10 @@ services:
       - ./src:/app/src
       # 挂载数据文件目录，让处理后的json文件可以被bookrag访问到
       - ./data:/app/data
-      - ${HOME}/.cache/huggingface:/app/.cache/huggingface
-      - ${HOME}/.cache/modelscope:/app/.cache/modelscope
-      - ${HOME}/.cache/vllm:/app/.cache/vllm
-      - ${HOME}/nltk_data:/app/nltk_data
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      - ${HOME}/.cache/modelscope:/root/.cache/modelscope
+      - ${HOME}/.cache/vllm:/root/.cache/vllm
+      - ${HOME}/nltk_data:/root/nltk_data
       # 注意，这个很重要，因为有不同的服务都要访问这个数据库文件
       # 所以，这里要挂载到宿主机的目录，而不是容器内的目录
       # 否则每个容器都会在自己的目录下创建一个数据库文件
@@ -206,7 +198,6 @@ services:
   vllm:
     image: mineru-service:latest
     container_name: jumo-vllm 
-    user: "${UID:-1000}:${GID:-1000}"
     restart: unless-stopped
 
     environment:
@@ -214,8 +205,6 @@ services:
       - MODEL=${MODEL:-opendatalab/MinerU2.5-2509-1.2B}
       - PYTHON_PATH=${PYTHON_PATH:-/app/.venv/bin/python}
       - PYTHONPATH=/app/src
-      - HF_HOME=/app/.cache/huggingface
-      - MODELSCOPE_CACHE=/app/.cache/modelscope
       - HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
       - MINERU_MODEL_SOURCE=${MINERU_MODEL_SOURCE:-modelscope}
       - INFERENCE_DEVICES=${INFERENCE_DEVICES:-0}
@@ -227,9 +216,9 @@ services:
       - ./logs:/app/logs
       # 挂载源码目录，确保容器能访问到启动脚本和代码
       - ./src:/app/src
-      - ${HOME}/.cache/huggingface:/app/.cache/huggingface
-      - ${HOME}/.cache/modelscope:/app/.cache/modelscope
-      - ${HOME}/.cache/vllm:/app/.cache/vllm
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      - ${HOME}/.cache/modelscope:/root/.cache/modelscope
+      - ${HOME}/.cache/vllm:/root/.cache/vllm
 
     deploy:
       resources:

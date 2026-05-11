@@ -57,6 +57,7 @@ from processor.markdown_splitter import process_markdown
 from processor.converters.file_converters import office_bytes_to_pdf_bytes
 from PIL import Image
 from processor.converters.markdown_math_stripper import strip_latex_from_json_structure,strip_latex_from_markdown
+from wrapper.mineru_image_writer_wrapper import MyImageInterceptor
 
 class PDFProcessor:
     def __init__(self, minio_tool: MinioConnection, task_repository: TaskRepository):
@@ -112,8 +113,11 @@ class PDFProcessor:
                 # pipeline_doc_analyze = with_gpu_selection(pipeline_doc_analyze)
 
                 local_image_dir, local_md_dir = prepare_env(output_dir, file_name, "auto")
-                image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
-
+                #image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+                # 显式开启描述生成功能
+                image_writer = MyImageInterceptor(local_image_dir, enable_caption=True)
+                md_writer = FileBasedDataWriter(local_md_dir)
+                
                 os.environ['MINERU_VLM_FORMULA_ENABLE'] = 'true' if bool(current_task.formula_enabled) else 'false'
                 os.environ['MINERU_VLM_TABLE_ENABLE'] = 'true' if bool(current_task.table_enabled) else 'false'
                 os.environ['MINERU_FORMULA_ENABLE'] = 'true' if bool(current_task.formula_enabled) else 'false'
@@ -148,6 +152,27 @@ class PDFProcessor:
                 # markdown 内容
                 pdf_info = middle_json["pdf_info"]
                 md_str = vlm_union_make(pdf_info, MakeMode.MM_MD, f"{current_task.task_id}/images")  # ★
+                
+                # 拦截处理之后插入描述信息
+                import re
+                logger.info(f"Start inserting captions. Total descriptions found: {len(image_writer.image_descriptions)}")
+                for img_path, desc in image_writer.image_descriptions.items():
+                    # 获取文件名（如 f859...jpg）
+                    img_filename = os.path.basename(img_path)
+                    logger.info(f"Processing caption for image: {img_filename}")
+                    
+                    # 使用正则匹配 Markdown 图片语法，兼容各种路径前缀
+                    # 匹配格式: ![](...img_filename)
+                    pattern = rf"!\[.*?\]\(.*{re.escape(img_filename)}\)"
+                    
+                    if re.search(pattern, md_str):
+                        def replace_func(match):
+                            return f"{match.group(0)}\n\n> 图片说明: {desc}"
+                        md_str = re.sub(pattern, replace_func, md_str)
+                        logger.info(f"Successfully inserted caption for {img_filename}")
+                    else:
+                        logger.warning(f"Could not find image {img_filename} in markdown text to insert caption")
+                
                 content_list = vlm_union_make(pdf_info, MakeMode.CONTENT_LIST,
                               f"{current_task.task_id}/images")  
                 
