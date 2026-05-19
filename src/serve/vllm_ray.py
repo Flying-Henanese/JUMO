@@ -5,7 +5,7 @@ from ray.serve.llm import LLMConfig, build_openai_app
 
 # Load configuration from environment variables
 tensor_parallel_size = int(os.getenv("VLLM_TENSOR_PARALLEL_SIZE", "1"))
-gpu_memory_utilization = float(os.getenv("VLLM_GPU_MEMORY_UTILIZATION", "0.6"))
+gpu_memory_utilization = float(os.getenv("VLLM_GPU_MEMORY_UTILIZATION", "0.85"))
 cpu_per_instance = float(os.getenv("VLLM_CPU_PER_INSTANCE", "4"))
 dtype = os.getenv("VLLM_DTYPE", "auto")
 model = os.getenv("MODEL", "opendatalab/MinerU2.5-2509-1.2B")
@@ -25,8 +25,8 @@ llm_config = LLMConfig(
     },
     deployment_config={
         "autoscaling_config": {
-            "min_replicas": 1,
-            "max_replicas": 4,
+            "min_replicas": 7,
+            "max_replicas": 8,
             "target_ongoing_requests": 20,
         },
         "ray_actor_options": {

@@ -2,7 +2,7 @@ services:
   # FastAPI 主服务
   mineru-api:
     build: .
-    image: mineru-service:latest
+    image: jumo:latest
     container_name: mineru-api
     restart: unless-stopped
     ports:
@@ -35,6 +35,7 @@ services:
       - ./logs:/app/logs
       # 挂载源码目录，实现代码修改后的热重载
       - ./src:/app/src
+      - ./tests:/app/tests
       # 注意，这个很重要，因为有不同的服务都要访问这个数据库文件
       # 所以，这里要挂载到宿主机的目录，而不是容器内的目录
       # 否则每个容器都会在自己的目录下创建一个数据库文件
@@ -62,7 +63,7 @@ services:
 
   # Celery Worker 容器
   mineru-worker:
-    image: mineru-service:latest
+    image: jumo:latest
     container_name: mineru-worker
     restart: unless-stopped
 
@@ -149,7 +150,7 @@ services:
 
   # vLLM 推理后端容器
   vllm:
-    image: mineru-service:latest
+    image: jumo:latest
     container_name: mineru-vllm
     restart: unless-stopped
 
@@ -165,6 +166,7 @@ services:
       - VLLM_DTYPE=${VLLM_DTYPE:-auto} # 注意：auto 会根据模型自动选择 dtype，避免在T4环境报错
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       # 用于健康检查的端口列表，逗号分隔，默认只检查 8000
+      - VLLM_GPU_MEMORY_UTILIZATION=${VLLM_GPU_MEMORY_UTILIZATION:-0.85}
 
     volumes:
       - ./logs:/app/logs
@@ -210,7 +212,7 @@ services:
 
   # NLP Ray Serve 容器 (NER + Embedding)
   mineru-nlp:
-    image: mineru-service:latest
+    image: jumo:latest
     container_name: mineru-nlp
     restart: unless-stopped
     environment:

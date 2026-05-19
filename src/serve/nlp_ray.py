@@ -80,23 +80,45 @@ class EmbeddingDeployment:
 
     @embedding_app.post("/encode")
     async def encode_api(self, request: EncodeRequest):
-        results = self.client.encode(sentences=request.texts)
-        
-        # Handle numpy array
-        if hasattr(results, "tolist"):
-            return results.tolist()
-            
-        # Handle torch tensor (just in case)
-        if hasattr(results, "cpu") and hasattr(results, "numpy"):
-            return results.cpu().numpy().tolist()
+        sentences = request.texts
 
-        # Handle list of numpy objects
-        if isinstance(results, list):
+        embeddings = self.client.encode(sentences=sentences)
+        
+        token_lengths = [self.client.get_token_count(text) for text in sentences]
+
+        if hasattr(embeddings, "tolist"):
+            processed_embeddings = embeddings.tolist()
+        elif hasattr(embeddings, "cpu") and hasattr(embeddings, "numpy"):
+            processed_embeddings = embeddings.cpu().numpy().tolist()
+        elif isinstance(embeddings, list):
             import numpy as np
-            if len(results) > 0 and isinstance(results[0], (np.ndarray, np.generic)):
-                return [x.tolist() for x in results]
+            if len(embeddings) > 0 and isinstance(embeddings[0], (np.ndarray, np.generic)):
+                processed_embeddings = [x.tolist() for x in embeddings]
+        else:
+            processed_embeddings = embeddings
+
+        return {
+            "embeddings": processed_embeddings,  # 原有向量数据
+            "lengths": token_lengths             # 新增：每个文本的token数
+        }
+    
+        # results = self.client.encode(sentences=request.texts)
+        
+        # # Handle numpy array
+        # if hasattr(results, "tolist"):
+        #     return results.tolist()
+            
+        # # Handle torch tensor (just in case)
+        # if hasattr(results, "cpu") and hasattr(results, "numpy"):
+        #     return results.cpu().numpy().tolist()
+
+        # # Handle list of numpy objects
+        # if isinstance(results, list):
+        #     import numpy as np
+        #     if len(results) > 0 and isinstance(results[0], (np.ndarray, np.generic)):
+        #         return [x.tolist() for x in results]
                 
-        return results
+        # return results
 
     def encode(self, sentences: Union[str, List[str]], **kwargs):
         """

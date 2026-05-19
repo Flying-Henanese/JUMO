@@ -129,7 +129,7 @@ class PDFProcessor:
                 image_rag_metadata_map: dict[str, ImageRAGMetadata] = {}
                 
                 # Get cached handle instead of creating new one every time
-                image_rag_handle = self._get_image_rag_handle()
+                # image_rag_handle = self._get_image_rag_handle()
 
                 local_image_dir, local_md_dir = prepare_env(output_dir, file_name, "auto")
                 image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
@@ -158,21 +158,21 @@ class PDFProcessor:
                                 img_bytes = img_f.read()
                                 
                                 # 提取图片的RAG元数据
-                                if image_rag_handle:
-                                    try:
-                                        # 使用 RPC 调用，直接传递 bytes
-                                        # 注意：这里为了简单起见使用了同步等待 (ray.get)，如果图片很多可以改为批量异步
-                                        metadata_dict = image_rag_handle.process_image.remote(
-                                            image=img_bytes,
-                                            additional_prompt="<CAPTION>" # 同时获取 Object Detection 结果作为标签来源
-                                        ).result()
-                                        # 将字典转换回对象 (如果 process_image 返回的是 dict)
-                                        # 注意: image_processing_ray.py 返回的是 metadata.to_dict()
-                                        metadata = ImageRAGMetadata(**metadata_dict) if isinstance(metadata_dict, dict) else metadata_dict
-                                        # 存入字典时需要转换为 dict，否则 json.dumps 会失败
-                                        image_rag_metadata_map[file] = metadata.to_dict() if hasattr(metadata, "to_dict") else metadata
-                                    except Exception as e:
-                                        logger.error(f"Image RAG processing failed for {file}: {e}")
+                                # if image_rag_handle:
+                                #     try:
+                                #         # 使用 RPC 调用，直接传递 bytes
+                                #         # 注意：这里为了简单起见使用了同步等待 (ray.get)，如果图片很多可以改为批量异步
+                                #         metadata_dict = image_rag_handle.process_image.remote(
+                                #             image=img_bytes,
+                                #             additional_prompt="<CAPTION>" # 同时获取 Object Detection 结果作为标签来源
+                                #         ).result()
+                                #         # 将字典转换回对象 (如果 process_image 返回的是 dict)
+                                #         # 注意: image_processing_ray.py 返回的是 metadata.to_dict()
+                                #         metadata = ImageRAGMetadata(**metadata_dict) if isinstance(metadata_dict, dict) else metadata_dict
+                                #         # 存入字典时需要转换为 dict，否则 json.dumps 会失败
+                                #         image_rag_metadata_map[file] = metadata.to_dict() if hasattr(metadata, "to_dict") else metadata
+                                #     except Exception as e:
+                                #         logger.error(f"Image RAG processing failed for {file}: {e}")
 
                                 remote_path = f"{current_task.task_id}/images/{file}"
                                 self.minio_tool.upload_file_by_bytes(
@@ -200,12 +200,12 @@ class PDFProcessor:
                 )
 
                 # 先试着把image_rag_metadata_map上传到minio
-                self.minio_tool.upload_file_by_bytes(
-                    bucket_name=current_task.output_bucket,
-                    object_name=f"{current_task.task_id}/{name_without_ext}_images.json",
-                    file_bytes=json.dumps(image_rag_metadata_map, ensure_ascii=False, indent=4).encode("utf-8"),
-                    content_type="application/json"
-                )
+                # self.minio_tool.upload_file_by_bytes(
+                #     bucket_name=current_task.output_bucket,
+                #     object_name=f"{current_task.task_id}/{name_without_ext}_images.json",
+                #     file_bytes=json.dumps(image_rag_metadata_map, ensure_ascii=False, indent=4).encode("utf-8"),
+                #     content_type="application/json"
+                # )
                 
                 # 切分处理后的markdown内容，并增强表格标题
                 splitted_markdown = process_markdown(clean_md)

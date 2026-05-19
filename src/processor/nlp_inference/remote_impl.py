@@ -21,7 +21,22 @@ class RemoteEmbeddingClient(EmbeddingClient):
                 timeout=30
             )
             response.raise_for_status()
-            return response.json()
+            return response.json()['embeddings']
+        except Exception as e:
+            logger.error(f"Failed to call Embedding service at {self.service_url}: {e}")
+            raise
+    
+    def get_token_count(self, text: str) -> int:
+        if not text:
+            return 0
+        try:
+            response = requests.post(
+                self.service_url,
+                json={"texts": [text]},
+                timeout=30
+            )
+            response.raise_for_status()
+            return response.json()['lengths'][0]
         except Exception as e:
             logger.error(f"Failed to call Embedding service at {self.service_url}: {e}")
             raise
