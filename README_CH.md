@@ -22,7 +22,7 @@
   - **资源利用最大化**：通过创建多组 **Celery Worker**（执行CPU密集任务） + **vLLM Server**（执行GPU密集推理任务）的Pod单元，实现对多核CPU+多卡GPU的并行调用，大幅提升单机处理吞吐量。
   - 使用Docker Compose进行服务编排，不同功能划分为不同的进程，保证服务的并发量和性能。
 
-![image.png](images/image.png)
+![image.png](images/hero.png)
 
 ## 架构设计
 
@@ -41,11 +41,11 @@
 * **Office 文档**：利用 **Docling** ，快速、精准地从文件中提取文本与格式信息。
 * **复杂 PDF 文档**：引入 **MinerU 视觉大模型（VLM）**，该模型具备类似人类的视觉能力，能够深度理解文档排版，完美还原文档结构和准确提取页面上的公式和表格元素，并统一输出为标准的 Markdown 格式。
 
-![原始文件](images/%E5%85%AC%E5%BC%8F1_1%E5%8E%9F%E5%A7%8B%E6%96%87%E4%BB%B6.png)
+![原始文件](images/formula-source.png)
 
 原始文件
 
-![解析后效果](images/%E5%85%AC%E5%BC%8F1_3%E8%A7%A3%E6%9E%90%E5%90%8E%E9%A2%84%E8%A7%88.png)
+![解析后效果](images/formula-preview.png)
 
 解析后效果
 
@@ -55,25 +55,25 @@
 * **键值对转换**：将表格行列关系转换为自然语义表达，便于大模型理解和问答。并且**支持合并单元格的处理**，避免生成关系错乱的表格数据。例如，将”产品名称 | 价格 | 库存”的表格转换为”产品名称：A；价格：100元，库存：50件；产品名称：B；价格：150元，库存：30件”等键值对形式。
 * **Markdown表格转换**：保持表格的原始结构，转换为标准的Markdown表格格式，便于上层应用中可视化展示。
 
-![原始表格](images/%E8%A1%A8%E6%A0%BC1_1%E5%8E%9F%E5%A7%8B%E6%96%87%E4%BB%B6.png)
+![原始表格](images/table-1-source.png)
 
 原始表格
 
-![markdown格式表格](images/%E8%A1%A8%E6%A0%BC1_3%E8%A7%A3%E6%9E%90%E5%90%8E%E9%A2%84%E8%A7%88.png)
+![markdown格式表格](images/table-1-markdown.png)
 
 markdown格式表格
 
-![key-value格式表格](images/%E8%A1%A8%E6%A0%BC1_4%E5%88%87%E5%88%86%E5%90%8E.png)
+![key-value格式表格](images/table-1-keyvalue.png)
 
 key-value格式表格
 
 此外，**针对过长的表格，支持按照长度切分，在不丢失信息的前提下**适配向量数据库的存储，保证后续的检索效果。
 
-![原始表格](images/%E8%A1%A8%E6%A0%BC2_3%E8%A7%A3%E6%9E%90%E5%90%8E%E9%A2%84%E8%A7%88.png)
+![原始表格](images/table-2-source.png)
 
 原始表格
 
-![表格切分后](images/%E8%A1%A8%E6%A0%BC2_4%E5%88%87%E5%88%86%E5%90%8E.png)
+![表格切分后](images/table-2-split.png)
 
 表格切分后
 
@@ -81,19 +81,19 @@ key-value格式表格
 
 摒弃了传统机械的字数切分方式，我们引入了 **BGE Embedding 模型**。通过计算文本向量并利用相似度聚类算法，将含义紧密相关的段落自动聚合。这种方式确保了每一个数据切片都是一个完整的”语义单元”，大幅提升了后续检索的准确性。与此同时，模型规模为24M，资源占用率极小，对整体解析流程的影响微乎其微。
 
-![语义切分前1](images/%E8%AF%AD%E4%B9%89%E5%88%86%E6%9E%901_2%E8%A7%A3%E6%9E%90%E5%90%8E.png)
+![语义切分前1](images/semantic-1-before.png)
 
 语义切分前1
 
-![语义切分后2](images/%E8%AF%AD%E4%B9%89%E5%88%86%E6%9E%901_4%E5%88%87%E5%88%86%E5%90%8E.png)
+![语义切分后2](images/semantic-1-after.png)
 
 语义切分后2
 
-![语义切分前2](images/%E8%AF%AD%E4%B9%89%E5%88%86%E6%9E%902_2%E8%A7%A3%E6%9E%90%E5%90%8E.png)
+![语义切分前2](images/semantic-2-before.png)
 
 语义切分前2
 
-![语义切分后2](images/%E8%AF%AD%E4%B9%89%E5%88%86%E6%9E%902_3%E5%88%87%E5%88%86%E5%90%8E.png)
+![语义切分后2](images/semantic-2-after.png)
 
 语义切分后2
 
@@ -101,7 +101,7 @@ key-value格式表格
 
 针对企业长文档层级复杂的特点，我们开发了**标题聚合功能**。系统会自动将多级标题信息聚合到对应的段落中。无论文档如何切分，每个切片都能保留”父级标题-子标题”的完整路径，有效解决了碎片化导致的上下文丢失问题，从而提升了后续检索的准确性和相关性。
 
-![多级标题聚合](images/%E8%AF%AD%E4%B9%89%E5%88%86%E6%9E%902_3%E5%88%87%E5%88%86%E5%90%8E%201.png)
+![多级标题聚合](images/title-aggregation.png)
 
 多级标题聚合
 
@@ -109,17 +109,17 @@ key-value格式表格
 
 为了进一步提升检索效率，我们集成了中英文的 **NER（命名实体识别）模型**。在解析过程中，系统会自动抽取文档中的组织机构、人名、专有名词等关键实体，为文档打上”智能标签”，实现多维度的精准检索。
 
-![image.png](images/image%201.png)
+![image.png](images/ner-1.png)
 
-![image.png](images/image%202.png)
+![image.png](images/ner-2.png)
 
 ### 6. 内容检索
 
-![原始PDF页面](images/image%203.png)
+![原始PDF页面](images/search-source.png)
 
 原始PDF页面
 
-![搜索关键字“叶片描述”](images/image%204.png)
+![搜索关键字“叶片描述”](images/search-result.png)
 
 搜索关键字“叶片描述”
 
@@ -164,7 +164,7 @@ key-value格式表格
 
 应用展示
 
-![c17614a4ad447a787d3a1131825a2d22.png](images/c17614a4ad447a787d3a1131825a2d22.png)
+![c17614a4ad447a787d3a1131825a2d22.png](images/app-demo.png)
 
 ### 7. 性能优化
 
