@@ -51,7 +51,7 @@ The source code is organized as follows in the `src` directory:
 ## Getting Started
 
 ### Prerequisites
-*   Python 3.11+
+*   Python `>=3.10,<3.14`
 *   Redis (for Celery broker/backend and caching)
 *   MinIO (or S3-compatible storage)
 *   Database (SQLAlchemy supported DBs)
@@ -61,7 +61,7 @@ The source code is organized as follows in the `src` directory:
 Configuration is managed via environment variables (likely in a `.env` file). Key variables include:
 *   `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`
 *   `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`
-*   `CUDA_VISIBLE_DEVICES` (managed automatically by workers)
+*   `INFERENCE_DEVICES` (used by Docker Compose to select inference devices)
 
 ### Running the Service
 
